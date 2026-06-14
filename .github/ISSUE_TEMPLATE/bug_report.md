@@ -26,7 +26,7 @@ If applicable, add screenshots to help explain your problem.
 - OS: [e.g. Ubuntu 24.04]
 - Node.js version: [e.g. 22.11]
 - Browser: [e.g. Chrome 125]
-- WA-AKG Business version: [e.g. 1.2.0]
+- WA-AKG Business version: [e.g. 3.4.0]
 
 **Backend logs**
 ```
