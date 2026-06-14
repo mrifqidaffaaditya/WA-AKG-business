@@ -32,14 +32,12 @@ export default function CSPage() {
   return (
     <Suspense
       fallback={
-        <DashboardShell>
-          <div className="flex items-center justify-center h-full">
-            <div className="flex items-center gap-3 text-slate-500">
-              <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
-              <span className="text-sm font-medium">Memuat...</span>
-            </div>
+        <div className="min-h-screen flex items-center justify-center bg-slate-950">
+          <div className="flex items-center gap-3 text-slate-500">
+            <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <span className="text-sm font-medium">Memuat...</span>
           </div>
-        </DashboardShell>
+        </div>
       }
     >
       <CSContent params={useParams() as { slug?: string[] }} />
@@ -50,7 +48,7 @@ export default function CSPage() {
 function CSContent({ params }: { params: { slug?: string[] } }) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const tabParam = searchParams.get("tab") as TabType | null;
   const chatIdFromPath = params.slug?.[0] || null;
@@ -70,6 +68,16 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
       : true
   );
   const [search, setSearch] = useState("");
+
+  // Redirect to login when user is logged out
+  useEffect(() => {
+    if (!authLoading && !user) {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("return_to", window.location.pathname + window.location.search);
+      }
+      router.replace("/login");
+    }
+  }, [authLoading, user, router]);
   const [newChatPopup, setNewChatPopup] = useState<{
     conv: Conversation;
     visible: boolean;

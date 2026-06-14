@@ -33,7 +33,19 @@ function LoginForm() {
   const [forceShow, setForceShow] = useState(false);
   const forceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const returnTo = searchParams.get("return_to") || "";
+  // Persist return_to across navigation via sessionStorage
+  const returnToParam = searchParams.get("return_to") || "";
+  const returnTo =
+    returnToParam ||
+    (typeof window !== "undefined"
+      ? sessionStorage.getItem("return_to") || ""
+      : "");
+
+  useEffect(() => {
+    if (returnToParam) {
+      sessionStorage.setItem("return_to", returnToParam);
+    }
+  }, [returnToParam]);
 
   useEffect(() => {
     if (loading) {
@@ -48,7 +60,17 @@ function LoginForm() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace(returnTo || (user?.role === "cs" ? "/cs" : "/admin"));
+      const saved = sessionStorage.getItem("return_to") || "";
+      sessionStorage.removeItem("return_to");
+
+      let target = saved || returnTo || "";
+      // Validate: only allow same-origin paths starting with /
+      if (!target.startsWith("/") || target.startsWith("/login")) {
+        target = "";
+      }
+
+      const fallback = user.role === "cs" ? "/cs" : "/admin";
+      router.replace(target || fallback);
     }
   }, [loading, user, router, returnTo]);
 

@@ -21,6 +21,18 @@ export function middleware(request: NextRequest) {
   const isLogin = pathname === "/login" || pathname === "/login/";
 
   if (isLogin) {
+    // Logged-in user visiting /login — redirect away
+    if (token) {
+      const payload = decodeJwt(token);
+      const returnTo = request.nextUrl.searchParams.get("return_to");
+      if (returnTo && returnTo.startsWith("/") && !returnTo.startsWith("/login")) {
+        return NextResponse.redirect(new URL(returnTo, request.url));
+      }
+      if (payload?.role === "cs") {
+        return NextResponse.redirect(new URL("/cs?tab=mine", request.url));
+      }
+      return NextResponse.redirect(new URL("/admin", request.url));
+    }
     return NextResponse.next();
   }
 
@@ -28,7 +40,10 @@ export function middleware(request: NextRequest) {
 
   if (!token) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("return_to", pathname + (request.nextUrl.search || ""));
+    const returnPath = pathname + (request.nextUrl.search || "");
+    if (returnPath !== "/" && returnPath !== "/login") {
+      loginUrl.searchParams.set("return_to", returnPath);
+    }
     return NextResponse.redirect(loginUrl);
   }
 

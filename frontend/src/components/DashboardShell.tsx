@@ -33,6 +33,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  const userRole = user?.role || "cs";
+  const userName = user?.name || "Guest";
+
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -53,7 +57,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         : true,
   });
 
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isAdmin = userRole === "admin" || userRole === "super_admin";
   const basePath = isAdmin ? "/admin" : "/cs";
   const isAdminPage = pathname?.startsWith("/admin");
 
@@ -323,25 +327,25 @@ export default function DashboardShell({ children }: DashboardShellProps) {
           <div className="flex items-center gap-3 sm:gap-4">
             <div className="flex flex-col items-end hidden sm:flex">
               <span className="text-sm font-semibold text-slate-200 max-w-[150px] truncate">
-                {user?.name || "Guest"}
+                {userName}
               </span>
               <span
                 className={
                   "text-[10px] mt-0.5 px-2 py-0.5 rounded-md font-medium border " +
-                  (roleColors[user?.role || "cs"] ||
+                  (roleColors[userRole] ||
                     roleColors.cs)
                 }
               >
-                {roleLabels[user?.role || "cs"] || "CS"}
+                {roleLabels[userRole] || "CS"}
               </span>
             </div>
             <div className="relative">
               <div
                 className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(
-                  user?.name || "G"
+                  userName
                 )} border border-emerald-500/20 flex items-center justify-center text-sm font-bold text-slate-200 shadow-inner`}
               >
-                {(user?.name || "G")[0].toUpperCase()}
+                {userName[0].toUpperCase()}
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-950 shadow-sm" />
             </div>

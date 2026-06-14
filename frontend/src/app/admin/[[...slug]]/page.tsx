@@ -46,14 +46,12 @@ export default function AdminPage() {
   return (
     <Suspense
       fallback={
-        <DashboardShell>
-          <div className="flex items-center justify-center h-full">
-            <div className="flex items-center gap-3 text-slate-500">
-              <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
-              <span className="text-sm">Memuat...</span>
-            </div>
+        <div className="min-h-screen flex items-center justify-center bg-slate-950">
+          <div className="flex items-center gap-3 text-slate-500">
+            <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <span className="text-sm">Memuat...</span>
           </div>
-        </DashboardShell>
+        </div>
       }
     >
       <AdminContent params={useParams() as { slug?: string[] }} />
@@ -63,7 +61,7 @@ export default function AdminPage() {
 
 function AdminContent({ params }: { params: { slug?: string[] } }) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const slug = params.slug?.[0] || "dashboard";
   const VALID_TABS: TabType[] = ["dashboard", "bot", "stock", "users", "gateway", "audit", "cs_config"];
@@ -76,6 +74,16 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
   }, [user, router]);
 
   useEffect(() => {
+    if (!authLoading && !user) {
+      // User logged out — save current path and redirect to login
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("return_to", window.location.pathname);
+      }
+      router.replace("/login");
+    }
+  }, [authLoading, user, router]);
+
+  useEffect(() => {
     if (user && user.role !== "cs") {
       setupPushNotifications();
       connect();
@@ -84,14 +92,12 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
 
   if (!user) {
     return (
-      <DashboardShell>
-        <div className="flex items-center justify-center h-full">
-          <div className="flex items-center gap-3 text-slate-500">
-            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
-            <span className="text-sm">Memuat...</span>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <div className="flex items-center gap-3 text-slate-500">
+          <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <span className="text-sm">Memuat...</span>
         </div>
-      </DashboardShell>
+      </div>
     );
   }
 
