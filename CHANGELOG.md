@@ -1,5 +1,29 @@
 # Changelog
 
+## [3.3.0] — 2026-06-14
+
+### Added
+- **WhatsApp Group Notifications** — Configurable real-time log notifications sent to a WhatsApp group: new customer, CS request/escalation, chat claimed, chat resolved. Includes timestamp, customer name, phone number, CS name, rating, and clickable URL.
+- **`!jid` Command** — Send `!jid` in any WhatsApp chat/group to instantly get the JID of that chat, for easy group notification configuration.
+- **CS Performance Dashboard** — New table in Admin Dashboard showing per-CS stats: total claimed, resolved, active count, and average rating with real-time online status indicators.
+- **CS Config Success/Error Modal** — The CS Settings panel now shows proper success/error modal feedback after saving (was previously silent).
+- **Audit Log for CS Actions** — Claim and resolve conversations are now recorded in the audit log with customer and CS details.
+- **Conversation Access Middleware** — Backend middleware validates conversation access before processing requests, separating 404 (not found) from 403 (forbidden) responses.
+- **Next.js Middleware (Auth Guard)** — Server-side middleware validates JWT from `access_token` cookie before page render: redirects unauthenticated users to `/login?return_to=...`, blocks CS from accessing `/admin`, validates `chatId` UUID format.
+- **`return_to` Callback on Login** — After authentication redirect to `/login`, users are automatically redirected back to their original destination.
+- **`access_token` HTTP-Only Cookie** — Backend now sets `access_token` as an httpOnly cookie (in addition to localStorage) for server-side middleware auth validation.
+- **CS Stats API** — `GET /api/admin/cs-stats` — Returns per-user conversation statistics for the performance dashboard.
+
+### Changed
+- **Audit Log Query** — Changed from `ORDER BY created_at ASC` to `DESC` (newest first), added user name via `LEFT JOIN`.
+- **Conversation Access Control** — CS agents can now view conversations in `waiting`/`bot` status (queue), 403 only for conversations claimed by another CS.
+
+### Fixed
+- **`formatPhone` crash** — Fixed `Cannot read properties of undefined (reading 'replace')` when `wa_number` is null/undefined.
+- **404 chatId cleanup** — Invalid `chatId` in URL now auto-redirects to clean URL instead of silently failing.
+- **Looping login redirect** — Middleware no longer redirects `/login` to `/login` when token is missing.
+- **DB Migration** — Added auto-migration for new `cs_config` columns (`wa_group_notif_enabled`, `wa_group_jid`) via `addColumnIfNotExists` utility.
+
 ## [3.2.0] — 2026-06-14
 
 ### Added

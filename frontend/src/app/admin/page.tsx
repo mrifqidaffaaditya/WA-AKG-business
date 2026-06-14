@@ -114,6 +114,7 @@ function DashboardPanel() {
     resolvedConversations: number;
     botConversations: number;
     totalCs: number;
+    onlineCs: number;
     totalCustomers: number;
     todayMessages: number;
     avgRating: number;
@@ -128,13 +129,32 @@ function DashboardPanel() {
     conversationsByStatus: Record<string, number>;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [pulse, setPulse] = useState(false);
 
   useEffect(() => {
     apiFetch("/api/admin/dashboard-stats")
       .then((res) => res.json())
-      .then((data) => setStats(data))
+      .then((data) => {
+        setStats(data);
+        setLastUpdate(new Date());
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    const socket = getIO();
+    if (!socket) return;
+    const handler = (data: typeof stats) => {
+      setStats(data);
+      setLastUpdate(new Date());
+      setPulse(true);
+      setTimeout(() => setPulse(false), 600);
+    };
+    socket.on("dashboard:stats", handler);
+
+    return () => {
+      socket.off("dashboard:stats", handler);
+    };
   }, []);
 
   if (loading) {
@@ -193,13 +213,15 @@ function DashboardPanel() {
       border: "border-slate-700/50",
     },
     {
-      label: "CS Online",
-      value: stats.totalCs,
+      label: "CS Aktif",
+      value: stats.onlineCs,
+      suffix: `/ ${stats.totalCs}`,
       icon: Users,
       gradient: "from-purple-500/10 to-purple-500/5",
       iconBg: "bg-purple-500/15",
       iconColor: "text-purple-400",
       border: "border-purple-500/10",
+      pulse: stats.onlineCs > 0,
     },
     {
       label: "Total Customer",
@@ -240,13 +262,23 @@ function DashboardPanel() {
 
   return (
     <div className="max-w-6xl animate-fadeIn">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-          <LayoutDashboard size={16} className="text-emerald-400" />
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+            <LayoutDashboard size={16} className="text-emerald-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-100">Dashboard</h2>
+            <p className="text-xs text-slate-500">Ringkasan performa CS realtime</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-lg font-semibold text-slate-100">Dashboard</h2>
-          <p className="text-xs text-slate-500">Ringkasan performa CS hari ini</p>
+        <div className="flex items-center gap-2">
+          {lastUpdate && (
+            <span className="text-[10px] text-slate-600">
+              Live · {lastUpdate.toLocaleTimeString("id-ID")}
+            </span>
+          )}
+          <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${pulse ? "bg-emerald-500 shadow-lg shadow-emerald-500/50" : "bg-slate-700"}`} />
         </div>
       </div>
 
@@ -261,16 +293,22 @@ function DashboardPanel() {
             }
           >
             <div className="flex items-start justify-between mb-3">
-              <div className={"rounded-lg p-2 " + card.iconBg}>
+              <div className={"rounded-lg p-2 relative " + card.iconBg}>
                 <card.icon size={17} className={card.iconColor} />
+                {"pulse" in card && card.pulse && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-slate-950 animate-pulse" />
+                )}
               </div>
               <ArrowUpRight
                 size={14}
                 className="text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity"
               />
             </div>
-            <p className="text-[28px] font-bold text-slate-100 leading-none tracking-tight">
+            <p className="text-[28px] font-bold text-slate-100 leading-none tracking-tight tabular-nums">
               {card.value}
+              {"suffix" in card && card.suffix && (
+                <span className="text-sm font-normal text-slate-600 ml-1">{card.suffix}</span>
+              )}
             </p>
             <p className="text-[11px] text-slate-500 mt-1.5 font-medium tracking-wide uppercase">
               {card.label}
@@ -367,6 +405,96 @@ function DashboardPanel() {
             </div>
           )}
         </div>
+      </div>
+
+      <CSPerformanceTable />
+
+    </div>
+  );
+}
+
+function CSPerformanceTable() {
+  const [csStats, setCsStats] = useState<{
+    id: string;
+    name: string;
+    role: string;
+    is_online: boolean;
+    total_claimed: number;
+    total_resolved: number;
+    avg_rating: number | null;
+    active_count: number;
+  }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch("/api/admin/cs-stats")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setCsStats(data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return null;
+  if (csStats.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 mt-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-slate-200">
+          Performa Customer Service
+        </h3>
+        <span className="text-[10px] text-slate-500">
+          {csStats.length} CS
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-800">
+              <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">CS</th>
+              <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Role</th>
+              <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+              <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Claimed</th>
+              <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Resolved</th>
+              <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Aktif</th>
+              <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Rating</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/50">
+            {csStats.map((cs) => (
+              <tr key={cs.id} className="hover:bg-slate-800/30 transition-colors">
+                <td className="px-3 py-3 text-slate-200 font-medium text-xs">{cs.name}</td>
+                <td className="px-3 py-3 text-center">
+                  <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${
+                    cs.role === "admin" ? "bg-blue-500/10 text-blue-400" : "bg-emerald-500/10 text-emerald-400"
+                  }`}>
+                    {cs.role === "admin" ? "Admin" : "CS"}
+                  </span>
+                </td>
+                <td className="px-3 py-3 text-center">
+                  <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                    cs.is_online ? "bg-emerald-500/10 text-emerald-400" : "bg-slate-700/50 text-slate-500"
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${cs.is_online ? "bg-emerald-400" : "bg-slate-600"}`} />
+                    {cs.is_online ? "Online" : "Offline"}
+                  </span>
+                </td>
+                <td className="px-3 py-3 text-center text-xs text-slate-300 font-mono">{cs.total_claimed}</td>
+                <td className="px-3 py-3 text-center text-xs text-slate-300 font-mono">{cs.total_resolved}</td>
+                <td className="px-3 py-3 text-center text-xs text-slate-300 font-mono">{cs.active_count}</td>
+                <td className="px-3 py-3 text-center text-xs">
+                  {cs.avg_rating != null ? (
+                    <span className="font-medium text-yellow-400">{cs.avg_rating}</span>
+                  ) : (
+                    <span className="text-slate-600">-</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -1518,10 +1646,18 @@ function CSConfigPanel() {
     autoReplyClaim: string;
     autoReplyResolveEnabled: boolean;
     autoReplyResolve: string;
+    waGroupNotifEnabled: boolean;
+    waGroupJid: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "success" | "error" | "warning" | "info";
+  }>({ isOpen: false, title: "", message: "", type: "info" });
 
   useEffect(() => {
     apiFetch("/api/admin/cs-config")
@@ -1545,8 +1681,19 @@ function CSConfigPanel() {
       if (!res.ok) throw new Error("Gagal menyimpan konfigurasi");
       const data = await res.json();
       setConfig(data);
+      setModal({
+        isOpen: true,
+        title: "Berhasil",
+        message: "Pengaturan CS berhasil disimpan",
+        type: "success",
+      });
     } catch (err: any) {
-      setError(err.message);
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: err.message || "Gagal menyimpan konfigurasi CS",
+        type: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -1694,6 +1841,42 @@ function CSConfigPanel() {
             )}
           </div>
 
+          <div className="pt-6 border-t border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-slate-300">Notifikasi Grup WhatsApp</label>
+              <button
+                onClick={() => setConfig({ ...config, waGroupNotifEnabled: !config.waGroupNotifEnabled })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  config.waGroupNotifEnabled ? "bg-emerald-500" : "bg-slate-700"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    config.waGroupNotifEnabled ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mb-3">Kirim notifikasi otomatis ke grup WhatsApp setiap ada aktivitas pelanggan (customer baru, request CS, chat diklaim, chat diselesaikan).</p>
+            {config.waGroupNotifEnabled && (
+              <div className="animate-in fade-in slide-in-from-top-2">
+                <label className="block text-sm font-semibold text-slate-300 mb-2">
+                  ID Grup WhatsApp (JID)
+                </label>
+                <input
+                  type="text"
+                  value={config.waGroupJid}
+                  onChange={(e) => setConfig({ ...config, waGroupJid: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50"
+                  placeholder="Contoh: 123456789-987654321@g.us"
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  Kirim pesan <code className="text-emerald-400 bg-emerald-400/10 px-1 py-0.5 rounded">!jid</code> di grup WhatsApp untuk mendapatkan ID grup. Format: <code className="text-emerald-400 bg-emerald-400/10 px-1 py-0.5 rounded">xxxxx-xxxxx@g.us</code>
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="pt-4 border-t border-slate-800 flex justify-end">
             <button
               onClick={handleSave}
@@ -1706,6 +1889,14 @@ function CSConfigPanel() {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={() => setModal((m) => ({ ...m, isOpen: false }))}
+        title={modal.title}
+        message={modal.message}
+        type={modal.type}
+      />
     </div>
   );
 }

@@ -56,7 +56,7 @@ export function optionalAuth(
     const payload = verifyAccessToken(token);
     req.user = { sub: payload.sub, role: payload.role };
   } catch {
-    // ignore
+    // optional auth — token invalid, continue without user
   }
   next();
 }

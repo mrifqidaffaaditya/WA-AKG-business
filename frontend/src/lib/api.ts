@@ -1,31 +1,25 @@
 const BASE = "";
 
 let accessToken: string | null = null;
-let refreshTokenValue: string | null = null;
 
-export function setTokens(access: string, refresh: string) {
+export function setTokens(access: string) {
   accessToken = access;
-  refreshTokenValue = refresh;
   if (typeof window !== "undefined") {
     localStorage.setItem("access_token", access);
-    localStorage.setItem("refresh_token", refresh);
   }
 }
 
-export function loadTokens(): { access: string | null; refresh: string | null } {
+export function loadTokens(): { access: string | null } {
   if (typeof window !== "undefined") {
     accessToken = localStorage.getItem("access_token");
-    refreshTokenValue = localStorage.getItem("refresh_token");
   }
-  return { access: accessToken, refresh: refreshTokenValue };
+  return { access: accessToken };
 }
 
 export function clearTokens() {
   accessToken = null;
-  refreshTokenValue = null;
   if (typeof window !== "undefined") {
     localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
   }
 }
 
@@ -37,17 +31,10 @@ export function getAccessToken(): string | null {
 }
 
 async function refreshAccessToken(): Promise<string | null> {
-  const refresh =
-    refreshTokenValue ||
-    (typeof window !== "undefined"
-      ? localStorage.getItem("refresh_token")
-      : null);
-  if (!refresh) return null;
-
   const res = await fetch(BASE + "/api/auth/refresh", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken: refresh }),
+    credentials: "include",
   });
 
   if (!res.ok) {
@@ -59,8 +46,12 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 
   const data = await res.json();
-  setTokens(data.accessToken || data.access_token, data.refreshToken || data.refresh_token || refresh);
-  return data.accessToken || data.access_token;
+  const newAccess = data.accessToken || data.access_token;
+  accessToken = newAccess;
+  if (typeof window !== "undefined") {
+    localStorage.setItem("access_token", newAccess);
+  }
+  return newAccess;
 }
 
 async function makeRequest(
@@ -68,8 +59,7 @@ async function makeRequest(
   options: RequestInit = {},
   raw: boolean = false
 ): Promise<unknown> {
-  loadTokens();
-  const token = accessToken;
+  const token = getAccessToken();
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
@@ -86,15 +76,17 @@ async function makeRequest(
   let res = await fetch(BASE + url, {
     ...options,
     headers,
+    credentials: "include",
   });
 
-  if (res.status === 401 && refreshTokenValue) {
+  if (res.status === 401) {
     const newToken = await refreshAccessToken();
     if (newToken) {
       headers["Authorization"] = "Bearer " + newToken;
       res = await fetch(BASE + url, {
         ...options,
         headers,
+        credentials: "include",
       });
     }
   }
@@ -156,4 +148,11 @@ export function put<T = unknown>(
 
 export function del<T = unknown>(url: string): Promise<T> {
   return api<T>(url, { method: "DELETE" });
+}
+
+export function getAuthenticatedMediaUrl(mediaUrl: string): string {
+  if (!mediaUrl || !mediaUrl.startsWith("/uploads/")) return "";
+  const token = getAccessToken();
+  if (!token) return mediaUrl;
+  return `${mediaUrl}?token=${encodeURIComponent(token)}`;
 }

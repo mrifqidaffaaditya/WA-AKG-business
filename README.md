@@ -70,6 +70,7 @@ The system uses **Baileys** as WhatsApp gateway (no WhatsApp Business API requir
 - Web Audio API sound notification on new messages
 - Floating claim popup for new waiting chats
 - Per-user notification preferences (toggle on/off per type)
+- **WhatsApp Group Notifications** — configurable log notifications to WhatsApp group (new customer, CS request, claim, resolve)
 
 ### Stock Integration
 - Google Sheets via Service Account (no OAuth refresh needed)
@@ -92,18 +93,21 @@ The system uses **Baileys** as WhatsApp gateway (no WhatsApp Business API requir
 
 ### Dashboard
 - **CS Panel:** Waiting Queue, My Chats, All Chats tabs, inline chat window, drag-and-drop file upload, queue badge, claim popup, sound notifications
-- **Admin Panel:** Bot config, Stock config, User CRUD, Gateway status + QR, Audit log, session timeout settings
+- **Admin Panel:** Bot config, Stock config, User CRUD, Gateway status + QR, CS Settings (signature, quick replies, auto-reply, WA group notifications), CS Performance table (per-user stats + ratings), Audit log
 - **Dark theme** (OLED-friendly) — no light-mode elements
 - **Premium modals** — all native alert/confirm replaced with custom dark-themed modals
 
 ### Security
-- JWT access token (15 min) + refresh token (7 days, httpOnly)
+- JWT access token (15 min) httpOnly cookie + refresh token (7 days)
 - Bcrypt password hashing (12 rounds)
 - Role-Based Access Control (super_admin, admin, cs)
+- Next.js server-side middleware (auth guard + role check before render)
+- Backend middleware (conversation access validation: 404 vs 403)
+- Frontend client-side guards (URL cleanup, null safety)
 - Rate limiting on login endpoint (brute-force protection)
 - Session invalidation on logout
 - CORS policy
-- Audit log for all admin actions
+- Audit log for all admin + CS actions (claim, resolve, config changes)
 
 ---
 

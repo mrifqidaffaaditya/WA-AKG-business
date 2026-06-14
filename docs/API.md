@@ -192,9 +192,39 @@ Get messages for a conversation with cursor pagination.
 
 ---
 
+### Conversation Access Control
+
+All conversation detail endpoints (`GET /:id`, `GET /:id/messages`, `POST /:id/resolve`) require conversation access:
+- `404` — Conversation not found
+- `403` — CS agent cannot access a conversation claimed by another CS (unless `waiting`/`bot` status)
+- Admins and super_admins have unrestricted access
+
+---
+
+### GET /api/conversations/cs-config
+
+Get CS configuration (quick replies, signature, auto-reply templates, group notification settings).
+
+**Response (200):**
+```json
+{
+  "signatureEnabled": true,
+  "signatureTemplate": " - {name}",
+  "quickReplies": ["Halo, ada yang bisa kami bantu?", "..."],
+  "autoReplyClaimEnabled": true,
+  "autoReplyClaim": "Halo, dengan CS {name} di sini. Ada yang bisa saya bantu?",
+  "autoReplyResolveEnabled": true,
+  "autoReplyResolve": "Terima kasih telah menghubungi kami...",
+  "waGroupNotifEnabled": false,
+  "waGroupJid": ""
+}
+```
+
+---
+
 ### POST /api/conversations/:id/claim
 
-Claim a waiting conversation. Requires `cs` role or higher.
+Claim a waiting conversation. Requires `cs` role or higher. Creates audit log entry and sends WhatsApp group notification (if configured).
 
 **Response (200):**
 ```json
@@ -232,7 +262,7 @@ Transfer a conversation to another CS.
 
 ### POST /api/conversations/:id/resolve
 
-Resolve a conversation. Triggers AI session summary generation.
+Resolve a conversation. Triggers AI session summary generation. Creates audit log entry and sends WhatsApp group notification (if configured).
 
 **Response (200):**
 ```json
@@ -401,7 +431,35 @@ Disconnect WA session.
 ### Audit Log
 
 #### GET /api/admin/audit-log
-Get latest 100 audit log entries.
+Get latest audit log entries (DESC order, newest first, with user names).
+
+**Query Parameters:**
+| Param | Type | Description |
+|---|---|---|
+| `limit` | number | Items per page (default: 50) |
+
+---
+
+### CS Stats
+
+#### GET /api/admin/cs-stats
+Get per-CS performance statistics.
+
+**Response (200):**
+```json
+[
+  {
+    "id": "uuid",
+    "name": "CS Agent",
+    "role": "cs",
+    "is_online": true,
+    "total_claimed": 45,
+    "total_resolved": 38,
+    "avg_rating": 4.2,
+    "active_count": 2
+  }
+]
+```
 
 ---
 

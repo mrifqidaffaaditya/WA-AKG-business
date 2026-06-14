@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { waEvents, sendWaMessage, getJid, extractWaNumber, downloadWaMedia, getConnectionStatus } from "./waGateway.js";
 import {
   findOrCreateCustomer,
@@ -17,6 +16,8 @@ import { emitToUser, emitToRole, broadcast } from "../ws/index.js";
 import { db, schema } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import { sendNotificationToAllCs, sendNotificationToUser, sendNotificationToAllAdmins } from "./notifications.js";
+import { requestDashboardBroadcast } from "./dashboard.js";
+import { notifyNewCustomer, notifyEscalation } from "./waGroupNotif.js";
 import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { proto } from "@whiskeysockets/baileys";
@@ -62,7 +63,6 @@ export function initOrchestrator(): void {
 }
 
 async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> {
-  logger.info("[orchestrator] Received message full payload: " + JSON.stringify(msg, null, 2));
   const key = msg.key;
   if (!key?.remoteJid) return;
   if (key.fromMe) return; // Skip messages sent by CS/bot to prevent loop/duplication
@@ -81,9 +81,20 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
   }
 
   const jid = key.remoteJid;
-  if (jid.includes("@g.us")) return;
 
   const content = extractMessageText(msg);
+
+  if (content && content.trim().toLowerCase() === "!jid") {
+    try {
+      await sendWaMessage(jid, { text: `JID: ${jid}` });
+    } catch (err) {
+      logger.error("[orchestrator] Failed to send !jid reply:", err);
+    }
+    return;
+  }
+
+  if (jid.includes("@g.us")) return;
+
   const contentType = getMessageContentType(msg);
 
   // Skip read receipts, delivery updates, and reactions (empty text/content type text)
@@ -93,15 +104,21 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
   }
 
   // Prefer key.senderPn (real phone number JID) over remoteJid (which might be a LID)
-  const phoneJid = key.senderPn || jid;
+  const phoneJid = (key as any).senderPn || jid;
   const waNumber = extractWaNumber(phoneJid);
   const pushName = msg.pushName || waNumber;
 
-  const customer = await findOrCreateCustomer({
+  const { customer, isNew } = await findOrCreateCustomer({
     waNumber,
     displayName: pushName,
     jid,
   });
+
+  if (isNew) {
+    notifyNewCustomer(pushName, waNumber).catch(
+      (err: unknown) => logger.error("[orchestrator] Failed to send new customer notif:", err)
+    );
+  }
 
   let activeConv = await findActiveConversation(customer.id);
 
@@ -131,39 +148,40 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
   let savedMsg: typeof schema.messages.$inferSelect | null = null;
 
   if (content || contentType !== "text") {
-    let mediaUrl: string | null = null;
-    let mediaType: string | null = null;
-    let fileName: string | null = null;
-    let fileSize: number | null = null;
+    let mediaUrl: string | undefined;
+    let mediaType: string | undefined;
+    let fileName: string | undefined;
+    let fileSize: number | undefined;
 
     if (contentType !== "text") {
       const messageType = Object.keys(msg.message || {})[0];
       const media = await downloadWaMedia(msg as any);
       mediaType = messageType;
-      const lengthVal = (msg.message?.[messageType] as any)?.fileLength;
+      const messagePayload = msg.message ? (msg.message as Record<string, unknown>)[messageType] as Record<string, unknown> : undefined;
+      const lengthVal = messagePayload?.fileLength;
       if (lengthVal !== undefined && lengthVal !== null) {
-        if (typeof lengthVal === "object" && typeof lengthVal.toNumber === "function") {
-          fileSize = lengthVal.toNumber();
+        if (typeof lengthVal === "object" && typeof (lengthVal as any).toNumber === "function") {
+          fileSize = (lengthVal as any).toNumber();
         } else if (typeof lengthVal === "number") {
           fileSize = lengthVal;
         } else {
-          fileSize = parseInt(lengthVal.toString(), 10);
+          fileSize = parseInt(String(lengthVal), 10);
         }
       }
-      fileName = (msg.message?.[messageType] as any)?.fileName || null;
-      mediaUrl = media ? await saveMediaBuffer(media, mediaType) : null;
+      fileName = (messagePayload?.fileName as string) || undefined;
+      mediaUrl = media ? await saveMediaBuffer(media, mediaType) : undefined;
     }
 
     savedMsg = await addMessage({
       conversationId: activeConv.id,
       sender: "customer",
-      content: content || null,
+      content: content || undefined,
       contentType: contentType as "text" | "image" | "video" | "document",
-      mediaUrl,
-      mediaType,
-      fileName,
-      fileSize,
-      waMessageId: msg.key?.id || null,
+      mediaUrl: mediaUrl || undefined,
+      mediaType: mediaType || undefined,
+      fileName: fileName || undefined,
+      fileSize: fileSize || undefined,
+      waMessageId: msg.key?.id || undefined,
     });
   } else {
     savedMsg = await addMessage({
@@ -171,11 +189,12 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
       sender: "customer",
       content: "",
       contentType: "text",
-      waMessageId: msg.key?.id || null,
+      waMessageId: msg.key?.id || undefined,
     });
   }
 
   if (savedMsg) {
+    requestDashboardBroadcast();
     emitToUser(activeConv.claimed_by || "none", "conversation:message", {
       conversationId: activeConv.id,
       message: savedMsg,
@@ -246,6 +265,7 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
         });
 
         await emitQueueCount();
+        requestDashboardBroadcast();
 
         sendNotificationToAllCs({
           title: `${pushName} menunggu dilayani CS`,
@@ -253,6 +273,10 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
           url: `/dashboard/conversations/${activeConv.id}`,
           tag: "new-queue",
         }).catch((err) => logger.error("[notif] Failed:", err));
+
+        notifyEscalation(pushName, waNumber, activeConv.id).catch(
+          (err: unknown) => logger.error("[orchestrator] Failed to send escalation notif:", err)
+        );
       }
     } else if (activeConv.status === "waiting") {
       // customer sends another message while waiting

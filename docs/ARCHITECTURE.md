@@ -124,6 +124,7 @@ last_summary, last_active_at, created_at
 ### Configuration Tables
 
 **bot_config** — single-row AI bot settings
+**cs_config** — single-row CS settings (signature, auto-reply, WA group notifications)
 **stock_config** — stock data source configuration
 **push_subscriptions** — browser push subscription per user/device
 **notification_preferences** — per-user per-type notification toggles
@@ -169,10 +170,39 @@ The extra row (+1) determines `has_more`. This approach avoids OFFSET performanc
 
 ## Security Model
 
-1. **Authentication:** JWT access token (15 min) sent in `Authorization: Bearer` header
+1. **Authentication:** JWT access token (15 min) sent in `Authorization: Bearer` header AND stored as httpOnly cookie for middleware
 2. **Refresh:** Long-lived refresh token (7 days) stored in DB, re-issued on use
 3. **Password hashing:** bcrypt with 12 salt rounds
-4. **RBAC:** Middleware checks `req.user.role` against required roles per endpoint
+4. **RBAC:** Next.js middleware (server-side) + Express middleware (backend) check roles before processing
 5. **Rate limiting:** Login endpoint limited to 5 requests per 15 minutes
 6. **CORS:** Only allows the configured frontend origin
-7. **Audit log:** All admin mutations recorded with user ID, action, entity, and timestamp
+7. **Audit log:** All admin + CS mutations recorded with user ID, action, entity, and timestamp
+8. **Defense in Depth:** 3-layer protection — Next.js middleware (before render) → Backend middleware (before handler) → Frontend client guards
+
+## WhatsApp Group Notifications
+
+Configurable real-time log notifications sent to a WhatsApp group:
+
+```
+[14/06/2026 10:30] 🆕 Pelanggan Baru
+👤 Nama: Budi Santoso
+📱 No: +6281234567890
+
+[14/06/2026 10:35] ⏳ Request CS
+👤 Nama: Budi Santoso
+📱 No: +6281234567890
+🔗 https://example.com/cs?tab=all&chatId=xxx
+
+[14/06/2026 10:40] ✅ Chat Diklaim
+👤 Pelanggan: Budi Santoso
+🧑‍💼 CS: Adi Pratama
+🔗 https://example.com/cs?tab=all&chatId=xxx
+
+[14/06/2026 11:00] ✅ Chat Diselesaikan
+👤 Pelanggan: Budi Santoso
+🧑‍💼 CS: Adi Pratama
+⭐ 5/5
+🔗 https://example.com/cs?tab=all&chatId=xxx
+```
+
+Configuration via Admin Panel > Settings CS > WhatsApp Group Notifications. Get group JID by sending `!jid` command in the group chat.

@@ -22,7 +22,8 @@ export function timeAgo(date: string | Date | null | undefined): string {
   });
 }
 
-export function formatPhone(phone: string): string {
+export function formatPhone(phone: string | null | undefined): string {
+  if (!phone) return "-";
   let cleaned = phone.replace(/[^0-9]/g, "");
   if (cleaned.startsWith("0")) {
     cleaned = "62" + cleaned.slice(1);

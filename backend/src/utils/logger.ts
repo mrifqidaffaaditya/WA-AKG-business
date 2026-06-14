@@ -18,10 +18,15 @@ function ts(): string {
 function log(level: LogLevel, msg: string, meta?: unknown) {
   if (LEVEL_PRIO[level] > LEVEL_PRIO[currentLevel]) return;
   const prefix = `[${ts()}] [${level.toUpperCase()}]`;
-  if (meta !== undefined) {
-    console.log(`${prefix} ${msg}`, meta);
+  const output = meta !== undefined
+    ? [`${prefix} ${msg}`, meta]
+    : [`${prefix} ${msg}`];
+  if (level === "error") {
+    console.error(...output);
+  } else if (level === "warn") {
+    console.warn(...output);
   } else {
-    console.log(`${prefix} ${msg}`);
+    console.log(...output);
   }
 }
 

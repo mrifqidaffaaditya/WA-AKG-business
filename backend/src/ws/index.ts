@@ -4,6 +4,10 @@ import { config } from "../config.js";
 import { verifyAccessToken } from "../services/auth.js";
 import { logger } from "../utils/logger.js";
 
+interface AuthenticatedSocket extends Socket {
+  user?: { sub: string; role: string };
+}
+
 let io: Server | null = null;
 const activeUsers = new Map<string, Set<string>>();
 
@@ -20,7 +24,8 @@ export function initWebSocket(httpServer: HttpServer): Server {
     transports: ["websocket", "polling"],
   });
 
-  io.on("connection", (socket: Socket) => {
+  io.on("connection", (rawSocket: Socket) => {
+    const socket = rawSocket as AuthenticatedSocket;
     logger.info(`[ws] Connected: ${socket.id}`);
 
     try {
@@ -32,10 +37,15 @@ export function initWebSocket(httpServer: HttpServer): Server {
       const payload = verifyAccessToken(token);
       const userData = { sub: payload.sub, role: payload.role };
 
-      (socket as any).user = userData;
+      socket.user = userData;
       socket.join(`user:${userData.sub}`);
       socket.join(`role:${userData.role}`);
       logger.info(`[ws] Auth: ${userData.sub} (${userData.role})`);
+
+      // Trigger dashboard stats for admin/super_admin on connect
+      if (userData.role === "admin" || userData.role === "super_admin") {
+        import("../services/dashboard.js").then((m) => m.broadcastDashboardStats()).catch(() => {});
+      }
 
       // Track online status
       if (!activeUsers.has(userData.sub)) {
@@ -50,7 +60,7 @@ export function initWebSocket(httpServer: HttpServer): Server {
 
     socket.on("disconnect", () => {
       logger.info(`[ws] Disconnected: ${socket.id}`);
-      const user = (socket as any).user;
+      const user = socket.user;
       if (user) {
         const sockets = activeUsers.get(user.sub);
         if (sockets) {

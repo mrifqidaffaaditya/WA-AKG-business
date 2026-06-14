@@ -212,18 +212,20 @@ function CSContent() {
         });
         
         // Fetch if missing (e.g., claimed by us or transferred)
-        apiFetch("/api/conversations/" + data.conversationId).then(r => r.json()).then(resData => {
-          const conv = resData.conversation || resData;
-          if (!conv || !conv.id) return;
-          setConversations(prev => {
-            if (prev.some(c => c.id === conv.id)) return prev;
-            const tab = activeTabRef.current;
-            if (tab === "all" || (tab === "mine" && conv.claimed_by === user?.id)) {
-              return [conv, ...prev];
-            }
-            return prev;
-          });
-        }).catch(() => {});
+        apiFetch("/api/conversations/" + data.conversationId)
+          .then(r => { if (!r.ok) throw new Error("not found"); return r.json(); })
+          .then(resData => {
+            const conv = resData.conversation || resData;
+            if (!conv || !conv.id) return;
+            setConversations(prev => {
+              if (prev.some(c => c.id === conv.id)) return prev;
+              const tab = activeTabRef.current;
+              if (tab === "all" || (tab === "mine" && conv.claimed_by === user?.id)) {
+                return [conv, ...prev];
+              }
+              return prev;
+            });
+          }).catch(() => {});
         
         const currentSelectedId = selectedIdRef.current;
         if (currentSelectedId === data.conversationId) {
@@ -285,19 +287,21 @@ function CSContent() {
 
       // If missing from list, fetch it and add it
       if (!existingConv) {
-        apiFetch("/api/conversations/" + msg.conversation_id).then(r => r.json()).then(data => {
-          const conv = data.conversation || data;
-          if (!conv || !conv.id) return;
-          
-          playNotify(conv);
-          
-          setConversations(prev => {
-            if (prev.some(c => c.id === conv.id)) return prev;
-            const tab = activeTabRef.current;
-            if (tab === "all" || (tab === "waiting" && conv.status === "waiting")) {
-               return [conv, ...prev];
-            }
-            return prev;
+        apiFetch("/api/conversations/" + msg.conversation_id)
+          .then(r => { if (!r.ok) throw new Error("not found"); return r.json(); })
+          .then(data => {
+            const conv = data.conversation || data;
+            if (!conv || !conv.id) return;
+            
+            playNotify(conv);
+            
+            setConversations(prev => {
+              if (prev.some(c => c.id === conv.id)) return prev;
+              const tab = activeTabRef.current;
+              if (tab === "all" || (tab === "waiting" && conv.status === "waiting")) {
+                 return [conv, ...prev];
+              }
+              return prev;
           });
         }).catch(() => {});
       }
@@ -319,14 +323,23 @@ function CSContent() {
     }
 
     apiFetch("/api/conversations/" + selectedId)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          setSelectedConv(null);
+          updateUrl(activeTab, null);
+          return;
+        }
+        return res.json();
+      })
       .then((data) => {
+        if (!data) return;
         setSelectedConv(data.conversation || data);
-        
-        // Mark as read in the sidebar
         setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, unread: 0 } : c));
       })
-      .catch(() => setSelectedConv(null));
+      .catch(() => {
+        setSelectedConv(null);
+        updateUrl(activeTab, null);
+      });
   }, [selectedId]);
 
   const updateUrl = (tab: TabType, chatId?: string | null) => {

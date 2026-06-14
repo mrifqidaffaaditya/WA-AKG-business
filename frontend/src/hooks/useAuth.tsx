@@ -59,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email, password }),
     });
 
@@ -68,17 +69,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const data = await res.json();
-    setTokens(data.accessToken || data.access_token, data.refreshToken || data.refresh_token);
-    await fetchUser();
+    setTokens(data.accessToken || data.access_token);
 
     const me = await get<{ user: User }>("/api/auth/me");
     setUserState(me.user);
-
-    if (me.user.role === "cs") {
-      router.push("/cs");
-    } else {
-      router.push("/admin");
-    }
   };
 
   const logout = async () => {
@@ -88,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fetch("/api/auth/logout", {
           method: "POST",
           headers: { Authorization: "Bearer " + token },
+          credentials: "include",
         });
       }
     } catch {

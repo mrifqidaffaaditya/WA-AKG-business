@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   makeWASocket,
   DisconnectReason,
@@ -39,11 +38,11 @@ const localMessageStore = new InMemoryMessageStore();
 
 class SimpleCache {
   private map = new Map<string, number>();
-  get(key: string): number | undefined {
-    return this.map.get(key);
+  get<T = number>(key: string): T | undefined {
+    return this.map.get(key) as T | undefined;
   }
-  set(key: string, val: number): void {
-    this.map.set(key, val);
+  set<T = number>(key: string, val: T): void {
+    this.map.set(key, val as any);
   }
   del(key: string): void {
     this.map.delete(key);
@@ -187,7 +186,9 @@ export async function disconnectWa(): Promise<void> {
   if (sock) {
     try {
       await sock.logout();
-    } catch {}
+    } catch (err) {
+      logger.debug("[wa] Logout error (continuing disconnect):", err);
+    }
     sock = null;
   }
   connectionStatus = "disconnected";
@@ -225,7 +226,7 @@ export async function sendWaMessage(
   if (result && result.key.remoteJid && result.key.id && result.message) {
     localMessageStore.set(result.key.remoteJid, result.key.id, result.message);
   }
-  return result;
+  return result ?? null;
 }
 
 export async function downloadWaMedia(

@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import Modal from "@/components/Modal";
 import { formatPhone, timeAgo, playBeep } from "@/lib/utils";
 import { getIO } from "@/lib/socket";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getAuthenticatedMediaUrl } from "@/lib/api";
 import {
   Send,
   Paperclip,
@@ -543,7 +543,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                     {msg.content_type === "image" && (
                       <div className="mb-2 overflow-hidden rounded-xl border border-white/10">
                         <img
-                          src={msg.media_url || msg.content}
+                          src={getAuthenticatedMediaUrl(msg.media_url || msg.content)}
                           alt="Gambar"
                           className="max-w-full max-h-[300px] object-cover transition-transform hover:scale-105"
                           loading="lazy"
@@ -554,7 +554,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                     {msg.content_type === "video" && (
                       <div className="mb-2 overflow-hidden rounded-xl border border-white/10">
                         <video
-                          src={msg.media_url || msg.content}
+                          src={getAuthenticatedMediaUrl(msg.media_url || msg.content)}
                           controls
                           className="max-w-full max-h-[300px] object-cover"
                         />
@@ -563,7 +563,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
 
                     {msg.content_type === "document" && (
                       <a
-                        href={msg.media_url || msg.content}
+                        href={getAuthenticatedMediaUrl(msg.media_url || msg.content)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className={"flex items-center gap-3 p-3 rounded-xl mb-2 transition-colors " + 

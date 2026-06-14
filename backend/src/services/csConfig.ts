@@ -1,6 +1,7 @@
 import { db, schema } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import { generateId } from "../utils/id.js";
+import { logger } from "../utils/logger.js";
 
 export interface CsConfig {
   signatureEnabled: boolean;
@@ -10,6 +11,8 @@ export interface CsConfig {
   autoReplyClaim: string;
   autoReplyResolveEnabled: boolean;
   autoReplyResolve: string;
+  waGroupNotifEnabled: boolean;
+  waGroupJid: string;
 }
 
 const defaultConfig: CsConfig = {
@@ -24,6 +27,8 @@ const defaultConfig: CsConfig = {
   autoReplyClaim: "Halo, dengan CS {name} di sini. Ada yang bisa saya bantu?",
   autoReplyResolveEnabled: true,
   autoReplyResolve: "Terima kasih telah menghubungi kami. Sesi obrolan ini telah ditutup. \n\nMohon berikan penilaian atas pelayanan kami dengan membalas pesan ini menggunakan angka 1 (Sangat Buruk) hingga 5 (Sangat Baik).",
+  waGroupNotifEnabled: false,
+  waGroupJid: "",
 };
 
 export async function getCsConfig(): Promise<CsConfig> {
@@ -39,6 +44,8 @@ export async function getCsConfig(): Promise<CsConfig> {
         autoReplyClaim: row.auto_reply_claim,
         autoReplyResolveEnabled: row.auto_reply_resolve_enabled,
         autoReplyResolve: row.auto_reply_resolve,
+        waGroupNotifEnabled: row.wa_group_notif_enabled,
+        waGroupJid: row.wa_group_jid,
       };
     }
     
@@ -54,11 +61,13 @@ export async function getCsConfig(): Promise<CsConfig> {
       auto_reply_claim: defaultConfig.autoReplyClaim,
       auto_reply_resolve_enabled: defaultConfig.autoReplyResolveEnabled,
       auto_reply_resolve: defaultConfig.autoReplyResolve,
+      wa_group_notif_enabled: defaultConfig.waGroupNotifEnabled,
+      wa_group_jid: defaultConfig.waGroupJid,
       updated_at: now,
     });
     return defaultConfig;
   } catch (err) {
-    console.error("Failed to read cs_config from db", err);
+    logger.error("Failed to read cs_config from db", err);
     return defaultConfig;
   }
 }
@@ -80,6 +89,8 @@ export async function updateCsConfig(config: Partial<CsConfig>): Promise<CsConfi
         auto_reply_claim: updated.autoReplyClaim,
         auto_reply_resolve_enabled: updated.autoReplyResolveEnabled,
         auto_reply_resolve: updated.autoReplyResolve,
+        wa_group_notif_enabled: updated.waGroupNotifEnabled,
+        wa_group_jid: updated.waGroupJid,
         updated_at: now,
       }).where(eq(schema.csConfig.id, rows[0].id));
     } else {
@@ -93,12 +104,14 @@ export async function updateCsConfig(config: Partial<CsConfig>): Promise<CsConfi
         auto_reply_claim: updated.autoReplyClaim,
         auto_reply_resolve_enabled: updated.autoReplyResolveEnabled,
         auto_reply_resolve: updated.autoReplyResolve,
+        wa_group_notif_enabled: updated.waGroupNotifEnabled,
+        wa_group_jid: updated.waGroupJid,
         updated_at: now,
       });
     }
     return updated;
   } catch (err) {
-    console.error("Failed to update cs_config in db", err);
+    logger.error("Failed to update cs_config in db", err);
     return { ...defaultConfig, ...config };
   }
 }

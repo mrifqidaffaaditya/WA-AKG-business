@@ -1,20 +1,57 @@
-// @ts-nocheck
 import { Router } from "express";
 import { authenticate, AuthRequest, requireRole } from "../middleware/auth.js";
 import { db, schema } from "../db/index.js";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { generateId } from "../utils/id.js";
 import { hashPassword, revokeAllUserTokens } from "../services/auth.js";
+import { adminMutationRateLimit } from "../middleware/rateLimit.js";
 import { createAuditLog } from "../utils/audit.js";
 import { previewStock, clearStockCache, syncStockNow } from "../services/stock.js";
 import { logger } from "../utils/logger.js";
+import { getDashboardStats } from "../services/dashboard.js";
 import { getCsConfig, updateCsConfig } from "../services/csConfig.js";
 import { getActiveUserIds } from "../ws/index.js";
+
+const ALLOWED_BOT_CONFIG_FIELDS = [
+  "persona_name",
+  "system_prompt",
+  "business_info",
+  "escalation_keywords",
+  "session_timeout_mins",
+  "auto_close_enabled",
+];
+
+function validateBotConfigFields(body: Record<string, unknown>): string | null {
+  const unknownFields = Object.keys(body).filter((k) => !ALLOWED_BOT_CONFIG_FIELDS.includes(k));
+  if (unknownFields.length > 0) {
+    return `Unknown field(s): ${unknownFields.join(", ")}`;
+  }
+  if (body.session_timeout_mins !== undefined && (typeof body.session_timeout_mins !== "number" || body.session_timeout_mins < 1)) {
+    return "session_timeout_mins must be a positive number";
+  }
+  if (body.auto_close_enabled !== undefined && typeof body.auto_close_enabled !== "boolean") {
+    return "auto_close_enabled must be a boolean";
+  }
+  if (body.persona_name !== undefined && typeof body.persona_name !== "string") {
+    return "persona_name must be a string";
+  }
+  if (body.system_prompt !== undefined && typeof body.system_prompt !== "string") {
+    return "system_prompt must be a string";
+  }
+  if (body.business_info !== undefined && typeof body.business_info !== "string") {
+    return "business_info must be a string";
+  }
+  if (body.escalation_keywords !== undefined && !Array.isArray(body.escalation_keywords)) {
+    return "escalation_keywords must be an array";
+  }
+  return null;
+}
 
 const router = Router();
 
 router.use(authenticate);
 router.use(requireRole("super_admin", "admin"));
+router.use(adminMutationRateLimit);
 
 // ── Bot Config ──────────────────────────────────────────────
 
@@ -33,6 +70,12 @@ router.get("/bot-config", async (_req, res) => {
 
 router.put("/bot-config", async (req: AuthRequest, res) => {
   try {
+    const validationError = validateBotConfigFields(req.body);
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+
     const existing = await db.select().from(schema.botConfig).limit(1);
     if (existing.length === 0) {
       res.status(404).json({ error: "Bot config not found" });
@@ -109,22 +152,45 @@ router.put("/cs-config", async (req: AuthRequest, res) => {
   }
 });
 
-// ── Stock Config ────────────────────────────────────────────
+// ── Stock Config (super_admin only ── contains credentials) ──
 
-router.get("/stock-config", async (_req, res) => {
+const stockRouter = Router();
+stockRouter.use(authenticate);
+stockRouter.use(requireRole("super_admin"));
+
+stockRouter.get("/", async (_req, res) => {
   try {
     const rows = await db.select().from(schema.stockConfig).limit(1);
     if (rows.length === 0) {
       res.status(404).json({ error: "Stock config not found" });
       return;
     }
-    res.json(rows[0]);
+    const row = { ...rows[0] };
+    // Mask credential fields in config_json for defense-in-depth
+    if (row.config_json) {
+      try {
+        const parsed: Record<string, unknown> =
+          typeof row.config_json === "string"
+            ? JSON.parse(row.config_json)
+            : {};
+        const SENSITIVE_KEYS = ["password", "api_key", "apiKey", "apikey", "secret", "credentials", "token"];
+        for (const key of Object.keys(parsed)) {
+          if (SENSITIVE_KEYS.some((sk) => key.toLowerCase().includes(sk.toLowerCase()))) {
+            parsed[key] = "***";
+          }
+        }
+        row.config_json = JSON.stringify(parsed) as any;
+      } catch (parseErr) {
+        logger.error("[admin] Failed to parse config_json for masking:", parseErr);
+      }
+    }
+    res.json(row);
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.put("/stock-config", async (req: AuthRequest, res) => {
+stockRouter.put("/", async (req: AuthRequest, res) => {
   try {
     const existing = await db.select().from(schema.stockConfig).limit(1);
     if (existing.length === 0) {
@@ -164,6 +230,8 @@ router.put("/stock-config", async (req: AuthRequest, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+router.use("/stock-config", stockRouter);
 
 router.get("/stock/preview", async (_req, res) => {
   try {
@@ -254,7 +322,7 @@ router.post("/users", async (req: AuthRequest, res) => {
 router.put("/users/:id", async (req: AuthRequest, res) => {
   try {
     const { name, email, password, role, is_active } = req.body;
-    const userId = req.params.id;
+    const userId = req.params.id as string;
 
     const existing = await db
       .select()
@@ -316,7 +384,7 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
 
 router.delete("/users/:id", async (req: AuthRequest, res) => {
   try {
-    const userId = req.params.id;
+    const userId = req.params.id as string;
     if (userId === req.user!.sub) {
       res.status(400).json({ error: "Cannot delete yourself" });
       return;
@@ -344,70 +412,8 @@ router.delete("/users/:id", async (req: AuthRequest, res) => {
 
 router.get("/dashboard-stats", async (_req, res) => {
   try {
-    const convCounts = await db
-      .select({
-        status: schema.conversations.status,
-        count: sql<number>`count(*)`.mapWith(Number),
-      })
-      .from(schema.conversations)
-      .groupBy(schema.conversations.status);
-
-    const totalConversations = convCounts.reduce((sum, r) => sum + r.count, 0);
-    const conversationsByStatus: Record<string, number> = {};
-    for (const r of convCounts) {
-      conversationsByStatus[r.status] = r.count;
-    }
-
-    const csCount = await db
-      .select({ count: sql<number>`count(*)`.mapWith(Number) })
-      .from(schema.users)
-      .where(and(eq(schema.users.role, "cs"), eq(schema.users.is_active, true)));
-
-    const customerCount = await db
-      .select({ count: sql<number>`count(*)`.mapWith(Number) })
-      .from(schema.customers);
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayMessages = await db
-      .select({ count: sql<number>`count(*)`.mapWith(Number) })
-      .from(schema.messages)
-      .where(sql`${schema.messages.created_at} >= ${todayStart.toISOString()}`);
-
-    const ratingRows = await db
-      .select({
-        avg: sql<number>`AVG(${schema.conversations.rating})`.mapWith(Number),
-      })
-      .from(schema.conversations)
-      .where(sql`${schema.conversations.rating} IS NOT NULL`);
-
-    const recentReviews = await db
-      .select({
-        id: schema.conversations.id,
-        customer_name: schema.conversations.customer_name,
-        wa_number: schema.conversations.wa_number,
-        rating: schema.conversations.rating,
-        review: schema.conversations.review,
-        resolved_at: schema.conversations.updated_at,
-      })
-      .from(schema.conversations)
-      .where(sql`${schema.conversations.rating} IS NOT NULL`)
-      .orderBy(desc(schema.conversations.updated_at))
-      .limit(5);
-
-    res.json({
-      totalConversations,
-      activeConversations: conversationsByStatus["active"] || 0,
-      waitingConversations: conversationsByStatus["waiting"] || 0,
-      resolvedConversations: conversationsByStatus["resolved"] || 0,
-      botConversations: conversationsByStatus["bot"] || 0,
-      totalCs: csCount[0]?.count || 0,
-      totalCustomers: customerCount[0]?.count || 0,
-      todayMessages: todayMessages[0]?.count || 0,
-      avgRating: ratingRows[0]?.avg || 0,
-      recentReviews,
-      conversationsByStatus,
-    });
+    const stats = await getDashboardStats();
+    res.json(stats);
   } catch (err) {
     logger.error("[admin] Dashboard stats error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -420,14 +426,79 @@ router.get("/audit-log", async (req, res) => {
   try {
     const limit = parseInt((req.query.limit as string) || "50", 10);
     const logs = await db
-      .select()
+      .select({
+        id: schema.auditLog.id,
+        user_id: schema.auditLog.user_id,
+        user_name: schema.users.name,
+        action: schema.auditLog.action,
+        entity_type: schema.auditLog.entity_type,
+        entity_id: schema.auditLog.entity_id,
+        details: schema.auditLog.details,
+        created_at: schema.auditLog.created_at,
+      })
       .from(schema.auditLog)
-      .limit(limit)
-      .orderBy(schema.auditLog.created_at);
+      .leftJoin(schema.users, eq(schema.auditLog.user_id, schema.users.id))
+      .orderBy(desc(schema.auditLog.created_at))
+      .limit(limit);
 
     res.json(logs);
   } catch (err) {
     logger.error("[admin] Audit log error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── CS Stats ─────────────────────────────────────────────────
+
+router.get("/cs-stats", async (_req, res) => {
+  try {
+    const activeUserIds = getActiveUserIds();
+    const users = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.is_active, true));
+
+    const rows = await db
+      .select({
+        id: schema.users.id,
+        name: schema.users.name,
+        role: schema.users.role,
+      })
+      .from(schema.users)
+      .where(eq(schema.users.is_active, true));
+
+    const conversations = await db
+      .select()
+      .from(schema.conversations);
+
+    const csUsers = rows.filter((u) => u.role !== "super_admin");
+
+    const result = csUsers.map((u) => {
+      const userConvs = conversations.filter((c) => c.claimed_by === u.id);
+      const resolved = userConvs.filter((c) => c.status === "resolved");
+      const active = userConvs.filter((c) => c.status === "active");
+      const ratings = resolved.filter((c) => c.rating != null).map((c) => c.rating as number);
+      const avgRating = ratings.length > 0
+        ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10
+        : null;
+
+      return {
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        is_online: activeUserIds.includes(u.id),
+        total_claimed: userConvs.length,
+        total_resolved: resolved.length,
+        avg_rating: avgRating,
+        active_count: active.length,
+      };
+    });
+
+    result.sort((a, b) => b.total_resolved - a.total_resolved);
+
+    res.json(result);
+  } catch (err) {
+    logger.error("[admin] CS stats error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

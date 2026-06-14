@@ -116,6 +116,15 @@ Beyond environment variables, these are configured through the Admin Panel:
 - Business information injected into bot context
 - Escalation keywords (comma-separated)
 
+### CS Config
+- Auto-signature toggle + template (with `{name}` placeholder)
+- Quick reply shortcuts (one per line)
+- Auto-reply on claim: toggle + message template
+- Auto-reply on resolve: toggle + message template
+- **WhatsApp Group Notifications:** toggle + group JID input
+  - Sends real-time log to WhatsApp group: new customer, CS request, chat claimed, chat resolved
+  - Get JID by sending `!jid` in the group chat
+
 ### Stock Config
 - Source type (none, google_sheets, mysql, postgresql)
 - Connection details as JSON config

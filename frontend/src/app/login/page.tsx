@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MessageCircle, ArrowRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -25,16 +25,19 @@ export default function LoginPage() {
 function LoginForm() {
   const { login, user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const returnTo = searchParams.get("return_to") || "";
+
   useEffect(() => {
     if (!loading && user) {
-      router.replace(user.role === "cs" ? "/cs" : "/admin");
+      router.replace(returnTo || (user.role === "cs" ? "/cs" : "/admin"));
     }
-  }, [loading, user, router]);
+  }, [loading, user, router, returnTo]);
 
   if (loading) {
     return (

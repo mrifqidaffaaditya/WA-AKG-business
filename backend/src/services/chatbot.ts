@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
 import { db, schema } from "../db/index.js";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { getCustomerByWaNumber } from "./conversation.js";
 import { getStockContext } from "./stock.js";
 import { logger } from "../utils/logger.js";
@@ -69,8 +69,8 @@ export async function generateBotResponse(
   if (!config.ai.apiKey) {
     return {
       response:
-        "Halo! Pesan Anda sudah kami terima. Tim CS kami akan segera membalas. 😊",
-      shouldEscalate: false,
+        "Halo! Pesan Anda sudah kami terima. Tim CS kami akan segera membalas.",
+      shouldEscalate: true,
     };
   }
 
@@ -79,7 +79,8 @@ export async function generateBotResponse(
     botConfig.escalationKeywords
   );
 
-  const stockContext = await getStockContext();
+  let stockContext = "";
+  try { stockContext = await getStockContext(); } catch (err) { logger.debug("[chatbot] Stock context unavailable:", err); }
   const customer = await getCustomerByWaNumber(waNumber);
 
   let returningContext = "";
@@ -112,10 +113,28 @@ ${returningContext ? `\n[RIWAYAT PERCAKAPAN SEBELUMNYA (HANYA REFERENSI)]\n${ret
 - Balasan singkat dan jelas, tidak bertele-tele.`;
 
   try {
+    // Fetch conversation history for context
+    let historyMessages: { role: "user" | "assistant"; content: string }[] = [];
+    try {
+      const priorMessages = await db
+        .select({ sender: schema.messages.sender, content: schema.messages.content })
+        .from(schema.messages)
+        .where(eq(schema.messages.conversation_id, conversationId))
+        .orderBy(asc(schema.messages.created_at))
+        .limit(50);
+      historyMessages = priorMessages
+        .filter((m) => m.content)
+        .map((m) => ({
+          role: m.sender === "customer" ? "user" as const : "assistant" as const,
+          content: m.content || "",
+        }));
+    } catch (err) { logger.debug("[chatbot] History fetch error:", err); }
+
     const completion = await client.chat.completions.create({
       model: config.ai.model,
       messages: [
         { role: "system", content: systemPrompt },
+        ...historyMessages,
         { role: "user", content: customerMessage },
       ],
       tools: [
@@ -165,7 +184,7 @@ ${returningContext ? `\n[RIWAYAT PERCAKAPAN SEBELUMNYA (HANYA REFERENSI)]\n${ret
     return {
       response:
         "Maaf, sistem kami sedang mengalami gangguan. Tim CS akan segera menghubungi Anda.",
-      shouldEscalate: false,
+      shouldEscalate: true,
     };
   }
 }
@@ -199,7 +218,8 @@ export async function generateSummary(
     return (
       completion.choices[0]?.message?.content || "Ringkasan sesi."
     );
-  } catch {
+  } catch (err) {
+    logger.error("[chatbot] Summary generation error:", err);
     return "Ringkasan sesi.";
   }
 }

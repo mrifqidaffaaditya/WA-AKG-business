@@ -1,4 +1,3 @@
-// @ts-nocheck
 import webpush from "web-push";
 import { config } from "../config.js";
 import { db, schema } from "../db/index.js";
@@ -79,6 +78,8 @@ export async function removeUserSubscriptions(userId: string): Promise<void> {
 }
 
 const notifDebounce = new Map<string, number>();
+const DEBOUNCE_CLEANUP_INTERVAL = 600_000; // 10 min
+let lastDebounceCleanup = Date.now();
 
 function shouldDebounce(key: string): boolean {
   const last = notifDebounce.get(key);
@@ -87,6 +88,15 @@ function shouldDebounce(key: string): boolean {
     return true;
   }
   notifDebounce.set(key, now);
+
+  // Evict stale entries periodically
+  if (now - lastDebounceCleanup > DEBOUNCE_CLEANUP_INTERVAL) {
+    lastDebounceCleanup = now;
+    const cutoff = now - config.notifDebounceSeconds * 1000;
+    for (const [k, t] of notifDebounce) {
+      if (t < cutoff) notifDebounce.delete(k);
+    }
+  }
   return false;
 }
 

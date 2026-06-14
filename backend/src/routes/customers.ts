@@ -8,7 +8,12 @@ router.use(authenticate);
 
 router.get("/:wa_number", async (req, res) => {
   try {
-    const customer = await getCustomerByWaNumber(req.params.wa_number);
+    const waNumber = req.params.wa_number;
+    if (!waNumber || waNumber.length > 30 || /[^0-9+]/.test(waNumber)) {
+      res.status(400).json({ error: "Invalid wa_number format" });
+      return;
+    }
+    const customer = await getCustomerByWaNumber(waNumber);
     if (!customer) {
       res.status(404).json({ error: "Customer not found" });
       return;

@@ -1,13 +1,12 @@
-// @ts-nocheck
 import { db, schema } from "../db/index.js";
 import { generateId } from "../utils/id.js";
-import { eq, desc, and, lt, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, lt, sql, inArray, SQL } from "drizzle-orm";
 
 export async function findOrCreateCustomer(params: {
   waNumber: string;
   displayName?: string;
   jid?: string;
-}): Promise<typeof schema.customers.$inferSelect> {
+}): Promise<{ customer: typeof schema.customers.$inferSelect; isNew: boolean }> {
   const existing = await db
     .select()
     .from(schema.customers)
@@ -22,7 +21,7 @@ export async function findOrCreateCustomer(params: {
         .where(eq(schema.customers.id, cust.id));
       cust.jid = params.jid;
     }
-    return cust;
+    return { customer: cust, isNew: false };
   }
 
   const now = new Date().toISOString();
@@ -44,7 +43,7 @@ export async function findOrCreateCustomer(params: {
     .from(schema.customers)
     .where(eq(schema.customers.id, id))
     .limit(1);
-  return rows[0];
+  return { customer: rows[0], isNew: true };
 }
 
 export type ConversationStatus = "bot" | "waiting" | "active" | "resolved";
@@ -57,28 +56,30 @@ export async function createConversation(params: {
   const id = generateId();
   const now = new Date().toISOString();
 
-  await db.insert(schema.conversations).values({
-    id,
-    customer_id: params.customerId,
-    wa_number: params.waNumber,
-    customer_name: params.customerName || null,
-    status: "bot",
-    claimed_by: null,
-    rating: null,
-    review: null,
-    created_at: now,
-    updated_at: now,
-  });
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.conversations).values({
+      id,
+      customer_id: params.customerId,
+      wa_number: params.waNumber,
+      customer_name: params.customerName || null,
+      status: "bot",
+      claimed_by: null,
+      rating: null,
+      review: null,
+      created_at: now,
+      updated_at: now,
+    });
 
-  // increment total_sessions
-  await db
-    .update(schema.customers)
-    .set({
-      total_sessions: sql`${schema.customers.total_sessions} + 1`,
-      last_active_at: now,
-      last_conversation_id: id,
-    })
-    .where(eq(schema.customers.id, params.customerId));
+    // increment total_sessions
+    await tx
+      .update(schema.customers)
+      .set({
+        total_sessions: sql`${schema.customers.total_sessions} + 1`,
+        last_active_at: now,
+        last_conversation_id: id,
+      })
+      .where(eq(schema.customers.id, params.customerId));
+  });
 
   const rows = await db
     .select()
@@ -166,15 +167,17 @@ export async function claimConversation(
   csId: string
 ): Promise<typeof schema.conversations.$inferSelect> {
   const now = new Date().toISOString();
-  await db
-    .update(schema.conversations)
-    .set({ claimed_by: csId, status: "active", updated_at: now })
-    .where(
-      and(
-        eq(schema.conversations.id, conversationId),
-        inArray(schema.conversations.status, ["bot", "waiting"])
-      )
-    );
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.conversations)
+      .set({ claimed_by: csId, status: "active", updated_at: now })
+      .where(
+        and(
+          eq(schema.conversations.id, conversationId),
+          inArray(schema.conversations.status, ["bot", "waiting"])
+        )
+      );
+  });
 
   const rows = await db
     .select()
@@ -190,15 +193,17 @@ export async function transferConversation(
   toCsId: string
 ): Promise<typeof schema.conversations.$inferSelect> {
   const now = new Date().toISOString();
-  await db
-    .update(schema.conversations)
-    .set({ claimed_by: toCsId, updated_at: now })
-    .where(
-      and(
-        eq(schema.conversations.id, conversationId),
-        eq(schema.conversations.claimed_by, fromCsId)
-      )
-    );
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.conversations)
+      .set({ claimed_by: toCsId, updated_at: now })
+      .where(
+        and(
+          eq(schema.conversations.id, conversationId),
+          eq(schema.conversations.claimed_by, fromCsId)
+        )
+      );
+  });
 
   const rows = await db
     .select()
@@ -246,33 +251,54 @@ export async function addMessage(params: {
   const id = generateId();
   const now = new Date().toISOString();
 
-  await db.insert(schema.messages).values({
-    id,
-    conversation_id: params.conversationId,
-    sender: params.sender,
-    cs_id: params.csId || null,
-    content: params.content || null,
-    content_type: params.contentType || "text",
-    media_url: params.mediaUrl || null,
-    media_type: params.mediaType || null,
-    file_name: params.fileName || null,
-    file_size: params.fileSize || null,
-    wa_message_id: params.waMessageId || null,
-    created_at: now,
-  });
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.messages).values({
+        id,
+        conversation_id: params.conversationId,
+        sender: params.sender,
+        cs_id: params.csId || null,
+        content: params.content || null,
+        content_type: params.contentType || "text",
+        media_url: params.mediaUrl || null,
+        media_type: params.mediaType || null,
+        file_name: params.fileName || null,
+        file_size: params.fileSize || null,
+        wa_message_id: params.waMessageId || null,
+        created_at: now,
+      });
 
-  await db
-    .update(schema.conversations)
-    .set({ updated_at: now })
-    .where(eq(schema.conversations.id, params.conversationId));
+      await tx
+        .update(schema.conversations)
+        .set({ updated_at: now })
+        .where(eq(schema.conversations.id, params.conversationId));
 
-  // update customer last_active_at
-  const conv = await getConversation(params.conversationId);
-  if (conv) {
-    await db
-      .update(schema.customers)
-      .set({ last_active_at: now })
-      .where(eq(schema.customers.id, conv.customer_id));
+      // update customer last_active_at
+      const convRows = await tx
+        .select({ customer_id: schema.conversations.customer_id })
+        .from(schema.conversations)
+        .where(eq(schema.conversations.id, params.conversationId))
+        .limit(1);
+      if (convRows.length > 0) {
+        await tx
+          .update(schema.customers)
+          .set({ last_active_at: now })
+          .where(eq(schema.customers.id, convRows[0].customer_id));
+      }
+    });
+  } catch (err: unknown) {
+    // Unique constraint violation on wa_message_id (duplicate message)
+    if (params.waMessageId && err && typeof err === "object" && "code" in err && (err as { code: string }).code === "SQLITE_UNIQUE") {
+      const existing = await db
+        .select()
+        .from(schema.messages)
+        .where(eq(schema.messages.wa_message_id, params.waMessageId))
+        .limit(1);
+      if (existing.length > 0) {
+        return existing[0];
+      }
+    }
+    throw err;
   }
 
   const rows = await db
@@ -295,21 +321,23 @@ export async function getMessages(params: {
 }> {
   const limit = params.limit || 30;
 
-  let query = db
+  const conditions: SQL[] = [
+    eq(schema.messages.conversation_id, params.conversationId),
+  ];
+
+  if (params.cursor) {
+    const cursorTime = params.cursor.split("|")[0];
+    conditions.push(lt(schema.messages.created_at, cursorTime));
+  }
+
+  const rows = await db
     .select({
       message: schema.messages,
       cs_name: schema.users.name,
     })
     .from(schema.messages)
     .leftJoin(schema.users, eq(schema.messages.cs_id, schema.users.id))
-    .where(eq(schema.messages.conversation_id, params.conversationId));
-
-  if (params.cursor) {
-    const cursorTime = params.cursor.split("|")[0];
-    query = query.where(lt(schema.messages.created_at, cursorTime));
-  }
-
-  const rows = await query
+    .where(and(...conditions))
     .orderBy(desc(schema.messages.created_at))
     .limit(limit + 1);
 
@@ -340,7 +368,7 @@ export async function getConversations(params: {
 }> {
   const limit = params.limit || 20;
 
-  const conditions: ReturnType<typeof eq>[] = [];
+  const conditions: SQL[] = [];
 
   if (params.status) {
     conditions.push(eq(schema.conversations.status, params.status));
@@ -354,19 +382,14 @@ export async function getConversations(params: {
     conditions.push(lt(schema.conversations.updated_at, params.cursor));
   }
 
-  let query = db
+  const rows = await db
     .select({
       conversation: schema.conversations,
       claimed_by_name: schema.users.name,
     })
     .from(schema.conversations)
-    .leftJoin(schema.users, eq(schema.conversations.claimed_by, schema.users.id));
-
-  if (conditions.length > 0) {
-    query = query.where(and(...conditions)) as any;
-  }
-
-  const rows = await query
+    .leftJoin(schema.users, eq(schema.conversations.claimed_by, schema.users.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(schema.conversations.updated_at))
     .limit(limit + 1);
 

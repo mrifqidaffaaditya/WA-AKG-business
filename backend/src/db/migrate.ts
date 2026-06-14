@@ -1,9 +1,13 @@
 import { createClient } from "@libsql/client";
 import { config } from "../config.js";
+import { logger } from "../utils/logger.js";
 
 const client = createClient({ url: config.dbPath });
 
 const MIGRATIONS = [
+  `PRAGMA journal_mode = WAL`,
+  `PRAGMA busy_timeout = 5000`,
+  `PRAGMA foreign_keys = ON`,
   `
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -114,8 +118,10 @@ const MIGRATIONS = [
   )`,
   // Indexes
   `CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON messages(conversation_id, created_at DESC)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_wa_message_id ON messages(wa_message_id)`,
   `CREATE INDEX IF NOT EXISTS idx_conversations_status_updated ON conversations(status, updated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_customers_wa_number ON customers(wa_number)`,
+  `CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token)`,
   `
   CREATE TABLE IF NOT EXISTS cs_config (
     id TEXT PRIMARY KEY,
@@ -129,20 +135,52 @@ const MIGRATIONS = [
     updated_at TEXT NOT NULL
   )
   `,
-  // Add jid column to customers table if not exists
-  `ALTER TABLE customers ADD COLUMN jid TEXT`,
 ];
+
+async function addColumnIfNotExists(
+  table: string,
+  column: string,
+  definition: string
+): Promise<void> {
+  const tableInfo = await client.execute(`PRAGMA table_info(${table})`);
+  const exists = tableInfo.rows.some((r: unknown) => (r as Record<string, unknown>).name === column);
+  if (!exists) {
+    await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    console.log(`[migrate] Added column ${table}.${column}`);
+  }
+}
 
 async function run() {
   console.log("[migrate] Running migrations...");
-  for (const sql of MIGRATIONS) {
-    try {
-      await client.execute(sql);
-    } catch (err: any) {
-      console.error("[migrate] Error:", err.message);
+  await client.execute("BEGIN TRANSACTION");
+  try {
+    for (const sql of MIGRATIONS) {
+      try {
+        await client.execute(sql);
+      } catch (err: unknown) {
+        const msg = err && typeof err === "object" && "message" in err ? (err as Error).message : String(err);
+        // Skip "duplicate column" errors on ALTER TABLE (handled gracefully)
+        if (msg.includes("duplicate column name")) continue;
+        logger.error(`[migrate] Migration error: ${msg}`);
+      }
     }
+    // Add jid column to customers table if it doesn't exist
+    const tableInfo = await client.execute("PRAGMA table_info(customers)");
+    const hasJid = tableInfo.rows.some((r: unknown) => (r as Record<string, unknown>).name === "jid");
+    if (!hasJid) {
+      await client.execute("ALTER TABLE customers ADD COLUMN jid TEXT");
+    }
+
+    await addColumnIfNotExists("cs_config", "wa_group_notif_enabled", "INTEGER NOT NULL DEFAULT 0");
+    await addColumnIfNotExists("cs_config", "wa_group_jid", "TEXT NOT NULL DEFAULT ''");
+
+    await client.execute("COMMIT");
+    console.log("[migrate] Done.");
+  } catch (err) {
+    await client.execute("ROLLBACK");
+    console.error("[migrate] Migration failed:", err);
+    throw err;
   }
-  console.log("[migrate] Done.");
 }
 
 run()

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { db, schema } from "./db/index.js";
 import { generateId } from "./utils/id.js";
 import { hashPassword } from "./services/auth.js";
@@ -16,12 +17,16 @@ async function seed() {
 
   const now = new Date().toISOString();
 
+  const superAdminPassword = process.env.SEED_SUPER_ADMIN_PASSWORD || crypto.randomBytes(16).toString("hex");
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || crypto.randomBytes(16).toString("hex");
+  const csPassword = process.env.SEED_CS_PASSWORD || crypto.randomBytes(16).toString("hex");
+
   const users = [
     {
       id: generateId(),
       name: "Super Admin",
       email: "superadmin@wa-akg.local",
-      password_hash: await hashPassword("admin123"),
+      password_hash: await hashPassword(superAdminPassword),
       role: "super_admin" as const,
       is_active: true,
       created_at: now,
@@ -30,7 +35,7 @@ async function seed() {
       id: generateId(),
       name: "Admin",
       email: "admin@wa-akg.local",
-      password_hash: await hashPassword("admin123"),
+      password_hash: await hashPassword(adminPassword),
       role: "admin" as const,
       is_active: true,
       created_at: now,
@@ -39,7 +44,7 @@ async function seed() {
       id: generateId(),
       name: "CS User",
       email: "cs@wa-akg.local",
-      password_hash: await hashPassword("cs123"),
+      password_hash: await hashPassword(csPassword),
       role: "cs" as const,
       is_active: true,
       created_at: now,
@@ -51,6 +56,10 @@ async function seed() {
   }
 
   console.log("[seed] Created 3 default users.");
+  console.log(`[seed] super_admin: superadmin@wa-akg.local / ${superAdminPassword}`);
+  console.log(`[seed] admin: admin@wa-akg.local / ${adminPassword}`);
+  console.log(`[seed] cs: cs@wa-akg.local / ${csPassword}`);
+  console.log("[seed] Set SEED_SUPER_ADMIN_PASSWORD, SEED_ADMIN_PASSWORD, SEED_CS_PASSWORD env vars to use custom passwords.");
 
   await db.insert(schema.botConfig).values({
     id: generateId(),

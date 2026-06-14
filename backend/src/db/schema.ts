@@ -62,7 +62,9 @@ export const messages = sqliteTable("messages", {
   file_size: integer("file_size"),
   wa_message_id: text("wa_message_id"),
   created_at: text("created_at").notNull(),
-});
+}, (table) => ({
+  waMessageIdIdx: uniqueIndex("wa_message_id_idx").on(table.wa_message_id),
+}));
 
 export const botConfig = sqliteTable("bot_config", {
   id: text("id").primaryKey(),
@@ -150,5 +152,9 @@ export const csConfig = sqliteTable("cs_config", {
     .notNull()
     .default(true),
   auto_reply_resolve: text("auto_reply_resolve").notNull(),
+  wa_group_notif_enabled: integer("wa_group_notif_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  wa_group_jid: text("wa_group_jid").notNull().default(""),
   updated_at: text("updated_at").notNull(),
 });

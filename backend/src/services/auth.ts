@@ -1,6 +1,5 @@
-// @ts-nocheck
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
+import jwt, { type JwtPayload, type SignOptions } from "jsonwebtoken";
 import { config } from "../config.js";
 import { db, schema } from "../db/index.js";
 import { generateId } from "../utils/id.js";
@@ -19,40 +18,42 @@ export async function comparePassword(
   return bcrypt.compare(password, hash);
 }
 
-export function generateAccessToken(payload: {
+interface TokenPayload {
   sub: string;
   role: string;
-}): string {
-  return jwt.sign({ ...payload, type: "access" }, config.appSecret, {
-    expiresIn: config.jwt.accessExpiresIn as any,
-  });
 }
 
-export function generateRefreshToken(payload: {
-  sub: string;
-  role: string;
-}): string {
-  return jwt.sign({ ...payload, type: "refresh" }, config.appSecret, {
-    expiresIn: config.jwt.refreshExpiresIn as any,
-  });
+const accessOptions: SignOptions = { expiresIn: config.jwt.accessExpiresIn as SignOptions["expiresIn"] };
+const refreshOptions: SignOptions = { expiresIn: config.jwt.refreshExpiresIn as SignOptions["expiresIn"] };
+
+export function generateAccessToken(payload: TokenPayload): string {
+  return jwt.sign({ ...payload, type: "access" }, config.appSecret, accessOptions);
 }
 
-export function verifyAccessToken(token: string): { sub: string; role: string } {
-  const decoded = jwt.verify(token, config.appSecret) as any;
-  if (decoded.type && decoded.type !== "access") {
+export function generateRefreshToken(payload: TokenPayload): string {
+  return jwt.sign({ ...payload, type: "refresh" }, config.refreshSecret, refreshOptions);
+}
+
+export function verifyAccessToken(token: string): TokenPayload {
+  const decoded = jwt.verify(token, config.appSecret) as JwtPayload & { type?: string };
+  if (!decoded.type || decoded.type !== "access") {
     throw new Error("Invalid token type");
   }
-  return { sub: decoded.sub, role: decoded.role };
+  if (!decoded.sub || !decoded.role) {
+    throw new Error("Invalid token payload");
+  }
+  return { sub: decoded.sub as string, role: decoded.role as string };
 }
 
-export function verifyRefreshToken(
-  token: string
-): { sub: string; role: string } {
-  const decoded = jwt.verify(token, config.appSecret) as any;
-  if (decoded.type && decoded.type !== "refresh") {
+export function verifyRefreshToken(token: string): TokenPayload {
+  const decoded = jwt.verify(token, config.refreshSecret) as JwtPayload & { type?: string };
+  if (!decoded.type || decoded.type !== "refresh") {
     throw new Error("Invalid token type");
   }
-  return { sub: decoded.sub, role: decoded.role };
+  if (!decoded.sub || !decoded.role) {
+    throw new Error("Invalid token payload");
+  }
+  return { sub: decoded.sub as string, role: decoded.role as string };
 }
 
 export async function storeRefreshToken(

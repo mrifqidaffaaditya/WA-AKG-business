@@ -1,14 +1,20 @@
 import "dotenv/config";
 
-const appSecret = process.env.APP_SECRET || "change-me";
-if (process.env.NODE_ENV === "production" && (!process.env.APP_SECRET || process.env.APP_SECRET === "change-me")) {
+const appSecret = process.env.APP_SECRET || "";
+const refreshSecret = process.env.REFRESH_SECRET || "";
+
+if (process.env.NODE_ENV === "production" && (!appSecret || appSecret === "")) {
   throw new Error("APP_SECRET must be set in production. Generate a random 32+ byte string.");
+}
+if (process.env.NODE_ENV === "production" && (!refreshSecret || refreshSecret === "")) {
+  throw new Error("REFRESH_SECRET must be set in production (separate from APP_SECRET). Generate a random 32+ byte string. Do NOT reuse APP_SECRET.");
 }
 
 export const config = {
   port: parseInt(process.env.APP_PORT || "4000", 10),
   nodeEnv: process.env.NODE_ENV || "development",
   appSecret,
+  refreshSecret,
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:4040",
   corsOrigin: process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:4040",
 

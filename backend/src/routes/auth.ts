@@ -13,17 +13,26 @@ import {
   isRefreshTokenValid,
 } from "../services/auth.js";
 import { authenticate, AuthRequest } from "../middleware/auth.js";
-import { loginRateLimit } from "../middleware/rateLimit.js";
+import { loginRateLimit, refreshRateLimit, profileRateLimit } from "../middleware/rateLimit.js";
 import { createAuditLog } from "../utils/audit.js";
-import { generateId } from "../utils/id.js";
 
 const router = Router();
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 router.post("/login", loginRateLimit, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+    if (typeof email !== "string" || !EMAIL_REGEX.test(email)) {
+      res.status(400).json({ error: "Invalid email format" });
+      return;
+    }
+    if (typeof password !== "string" || password.length < 6) {
+      res.status(400).json({ error: "Password must be at least 6 characters" });
       return;
     }
 
@@ -60,9 +69,17 @@ router.post("/login", loginRateLimit, async (req, res) => {
     res.cookie("refresh_token", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/api/auth",
+    });
+
+    res.cookie("access_token", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+      path: "/",
     });
 
     res.json({
@@ -74,16 +91,16 @@ router.post("/login", loginRateLimit, async (req, res) => {
         role: user.role,
       },
     });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/refresh", async (req, res) => {
+router.post("/refresh", refreshRateLimit, async (req, res) => {
   try {
-    const token = req.cookies?.refresh_token || req.body?.refreshToken || req.body?.refresh_token;
+    const token = req.cookies?.refresh_token;
 
-    if (!token) {
+    if (!token || typeof token !== "string") {
       res.status(401).json({ error: "Refresh token missing" });
       return;
     }
@@ -95,9 +112,36 @@ router.post("/refresh", async (req, res) => {
     }
 
     const payload = verifyRefreshToken(token);
+
+    // Revoke old refresh token (rotation)
+    await revokeRefreshToken(token);
+
     const newAccessToken = generateAccessToken({
       sub: payload.sub,
       role: payload.role,
+    });
+    const newRefreshToken = generateRefreshToken({
+      sub: payload.sub,
+      role: payload.role,
+    });
+
+    // Store the new refresh token
+    await storeRefreshToken(payload.sub, newRefreshToken);
+
+    res.cookie("refresh_token", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/api/auth",
+    });
+
+    res.cookie("access_token", newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+      path: "/",
     });
 
     res.json({ accessToken: newAccessToken });
@@ -108,13 +152,14 @@ router.post("/refresh", async (req, res) => {
 
 router.post("/logout", authenticate, async (req: AuthRequest, res) => {
   try {
-    const token = req.cookies?.refresh_token || req.body?.refreshToken || req.body?.refresh_token;
+    const token = req.cookies?.refresh_token;
 
     if (token) {
       await revokeRefreshToken(token);
     }
 
     res.clearCookie("refresh_token", { path: "/api/auth" });
+    res.clearCookie("access_token", { path: "/" });
     res.json({ message: "Logged out" });
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -148,16 +193,35 @@ router.get("/me", authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.put("/profile", authenticate, async (req: AuthRequest, res) => {
+router.put("/profile", authenticate, profileRateLimit, async (req: AuthRequest, res) => {
   try {
-    const { name, password } = req.body;
+    const { name, password, currentPassword } = req.body;
     const updates: Record<string, unknown> = {};
 
-    if (name) updates.name = name;
     if (password) {
+      if (!currentPassword) {
+        res.status(400).json({ error: "Current password is required to set a new password" });
+        return;
+      }
+      const userRows = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.id, req.user!.sub))
+        .limit(1);
+      if (userRows.length === 0) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      const valid = await comparePassword(currentPassword, userRows[0].password_hash);
+      if (!valid) {
+        res.status(403).json({ error: "Current password is incorrect" });
+        return;
+      }
       updates.password_hash = await hashPassword(password);
       await revokeAllUserTokens(req.user!.sub);
     }
+
+    if (name) updates.name = name;
 
     if (Object.keys(updates).length > 0) {
       await db
