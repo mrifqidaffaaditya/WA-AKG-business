@@ -43,16 +43,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUserState(data.user);
         setLoading(false);
         return;
-      } catch {
+      } catch (err: any) {
+        if (err && (err.status === 404 || err.status === 401)) {
+          clearTokens();
+          setUserState(null);
+          setLoading(false);
+          router.push("/login");
+          return;
+        }
         attempts++;
         if (attempts < 2) {
           await new Promise((r) => setTimeout(r, 500));
         }
       }
     }
+    clearTokens();
     setUserState(null);
     setLoading(false);
-  }, []);
+    router.push("/login");
+  }, [router]);
 
   useEffect(() => {
     const tokens = loadTokens();
