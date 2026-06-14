@@ -140,8 +140,17 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
       const messageType = Object.keys(msg.message || {})[0];
       const media = await downloadWaMedia(msg as any);
       mediaType = messageType;
+      const lengthVal = (msg.message?.[messageType] as any)?.fileLength;
+      if (lengthVal !== undefined && lengthVal !== null) {
+        if (typeof lengthVal === "object" && typeof lengthVal.toNumber === "function") {
+          fileSize = lengthVal.toNumber();
+        } else if (typeof lengthVal === "number") {
+          fileSize = lengthVal;
+        } else {
+          fileSize = parseInt(lengthVal.toString(), 10);
+        }
+      }
       fileName = (msg.message?.[messageType] as any)?.fileName || null;
-      fileSize = (msg.message?.[messageType] as any)?.fileLength || null;
       mediaUrl = media ? await saveMediaBuffer(media, mediaType) : null;
     }
 
