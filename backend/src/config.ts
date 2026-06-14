@@ -1,0 +1,53 @@
+import "dotenv/config";
+
+const appSecret = process.env.APP_SECRET || "change-me";
+if (process.env.NODE_ENV === "production" && (!process.env.APP_SECRET || process.env.APP_SECRET === "change-me")) {
+  throw new Error("APP_SECRET must be set in production. Generate a random 32+ byte string.");
+}
+
+export const config = {
+  port: parseInt(process.env.APP_PORT || "4000", 10),
+  nodeEnv: process.env.NODE_ENV || "development",
+  appSecret,
+  frontendUrl: process.env.FRONTEND_URL || "http://localhost:4040",
+  corsOrigin: process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:4040",
+
+  dbPath: process.env.DB_PATH || "file:./data/wa_akg.db",
+
+  redis: {
+    host: process.env.REDIS_HOST || "localhost",
+    port: parseInt(process.env.REDIS_PORT || "6379", 10),
+  },
+
+  ai: {
+    baseUrl: process.env.AI_BASE_URL || "https://api.openai.com/v1",
+    apiKey: process.env.AI_API_KEY || "",
+    model: process.env.AI_MODEL || "gpt-4o",
+    maxTokens: parseInt(process.env.AI_MAX_TOKENS || "1024", 10),
+  },
+
+  wa: {
+    sessionPath: process.env.WA_SESSION_PATH || "./sessions",
+  },
+
+  vapid: {
+    publicKey: process.env.VAPID_PUBLIC_KEY || "",
+    privateKey: process.env.VAPID_PRIVATE_KEY || "",
+    subject: process.env.VAPID_SUBJECT || "mailto:admin@yourdomain.com",
+  },
+
+  pagination: {
+    messagesPageSize: parseInt(process.env.MESSAGES_PAGE_SIZE || "30", 10),
+    conversationsPageSize: parseInt(process.env.CONVERSATIONS_PAGE_SIZE || "20", 10),
+    messagesSoftCap: parseInt(process.env.MESSAGES_SOFT_CAP || "5000", 10),
+  },
+
+  contextExpiryDays: parseInt(process.env.CONTEXT_EXPIRY_DAYS || "90", 10),
+  notifQueueThreshold: parseInt(process.env.NOTIF_QUEUE_THRESHOLD || "5", 10),
+  notifDebounceSeconds: parseInt(process.env.NOTIF_DEBOUNCE_SECONDS || "30", 10),
+
+  jwt: {
+    accessExpiresIn: "15m",
+    refreshExpiresIn: "7d",
+  },
+};

@@ -1,0 +1,9 @@
+{
+  "name": "WA-AKG Business",
+  "short_name": "WA-AKG",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#10b981"
+}
+

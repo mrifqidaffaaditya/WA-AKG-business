@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.next/
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+credentials/
+!credentials/.gitkeep
+sessions/
+*.log
+.DS_Store
+.env.local
+.env.production

@@ -1,0 +1,88 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: wa-akg-nginx
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4040}:4040"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - wa_akg
+
+  frontend:
+    build: ./frontend
+    container_name: wa-akg-frontend
+    restart: unless-stopped
+    expose:
+      - "4041"
+    environment:
+      - PORT=4041
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=
+      - NEXT_PUBLIC_VAPID_KEY=${NEXT_PUBLIC_VAPID_KEY}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - wa_akg
+
+  backend:
+    build: ./backend
+    container_name: wa-akg-backend
+    restart: unless-stopped
+    expose:
+      - "4000"
+    env_file:
+      - .env
+    environment:
+      - APP_PORT=4000
+      - DB_PATH=file:/app/data/wa_akg.db
+      - WA_SESSION_PATH=/app/sessions
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - NODE_ENV=production
+      - CORS_ORIGIN=${FRONTEND_URL:-http://localhost:4040}
+    volumes:
+      - app_data:/app/data
+      - app_sessions:/app/sessions
+      - ./uploads:/app/public/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wa_akg
+
+  redis:
+    image: redis:7-alpine
+    container_name: wa-akg-redis
+    restart: unless-stopped
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wa_akg
+
+volumes:
+  app_data:
+  app_sessions:
+  redis_data:
+
+networks:
+  wa_akg:
+    driver: bridge
+
