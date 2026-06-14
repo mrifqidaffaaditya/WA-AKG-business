@@ -48,6 +48,9 @@ class SimpleCache {
   del(key: string): void {
     this.map.delete(key);
   }
+  flushAll(): void {
+    this.map.clear();
+  }
 }
 const msgRetryCounterCache = new SimpleCache();
 
