@@ -100,6 +100,7 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
   const customer = await findOrCreateCustomer({
     waNumber,
     displayName: pushName,
+    jid,
   });
 
   let activeConv = await findActiveConversation(customer.id);

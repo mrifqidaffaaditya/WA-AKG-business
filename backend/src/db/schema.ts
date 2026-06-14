@@ -21,6 +21,7 @@ export const customers = sqliteTable("customers", {
   last_summary: text("last_summary"),
   last_active_at: text("last_active_at"),
   created_at: text("created_at").notNull(),
+  jid: text("jid"),
 });
 
 export const conversations = sqliteTable("conversations", {

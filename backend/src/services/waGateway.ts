@@ -134,7 +134,28 @@ export async function sendWaMessage(
   content: AnyMessageContent
 ): Promise<proto.WebMessageInfo | null> {
   if (!sock) return null;
-  const targetJid = jid.includes("@") ? jid : getJid(jid);
+  let targetJid = jid;
+  if (!jid.includes("@")) {
+    try {
+      const { db, schema } = await import("../db/index.js");
+      const { eq } = await import("drizzle-orm");
+      const customer = await db
+        .select()
+        .from(schema.customers)
+        .where(eq(schema.customers.wa_number, jid))
+        .limit(1);
+      
+      if (customer.length > 0 && customer[0].jid) {
+        targetJid = customer[0].jid;
+        logger.info(`[wa] Found custom JID for ${jid}: ${targetJid}`);
+      } else {
+        targetJid = getJid(jid);
+      }
+    } catch (err) {
+      logger.error(`[wa] Error looking up customer JID for ${jid}:`, err);
+      targetJid = getJid(jid);
+    }
+  }
   return sock.sendMessage(targetJid, content);
 }
 

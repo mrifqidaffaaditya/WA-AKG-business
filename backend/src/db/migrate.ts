@@ -129,6 +129,8 @@ const MIGRATIONS = [
     updated_at TEXT NOT NULL
   )
   `,
+  // Add jid column to customers table if not exists
+  `ALTER TABLE customers ADD COLUMN jid TEXT`,
 ];
 
 async function run() {

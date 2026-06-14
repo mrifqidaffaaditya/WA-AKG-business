@@ -6,6 +6,7 @@ import { eq, desc, and, lt, sql, inArray } from "drizzle-orm";
 export async function findOrCreateCustomer(params: {
   waNumber: string;
   displayName?: string;
+  jid?: string;
 }): Promise<typeof schema.customers.$inferSelect> {
   const existing = await db
     .select()
@@ -14,7 +15,14 @@ export async function findOrCreateCustomer(params: {
     .limit(1);
 
   if (existing.length > 0) {
-    return existing[0];
+    const cust = existing[0];
+    if (params.jid && cust.jid !== params.jid) {
+      await db.update(schema.customers)
+        .set({ jid: params.jid })
+        .where(eq(schema.customers.id, cust.id));
+      cust.jid = params.jid;
+    }
+    return cust;
   }
 
   const now = new Date().toISOString();
@@ -28,6 +36,7 @@ export async function findOrCreateCustomer(params: {
     last_summary: null,
     last_active_at: now,
     created_at: now,
+    jid: params.jid || null,
   });
 
   const rows = await db
