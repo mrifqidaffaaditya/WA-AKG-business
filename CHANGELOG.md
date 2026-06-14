@@ -16,6 +16,7 @@
 - **LID Decryption Error ("Menunggu Pesan")** — Fixed WhatsApp decryption failure when agent replies to contacts using a LID by dynamically mapping and routing agent messages to their corresponding active LID JID stored in the customer database record.
 - **Baileys Retry Decryption Error ("Menunggu Pesan")** — Implemented the required `getMessage` handler and `msgRetryCounterCache` (using custom Map store and database fallbacks) in the Baileys socket options to enable successful decryption retries without external `makeInMemoryStore` export dependency.
 - **Chatbot Prompt Confusion & Summary Leakage** — Improved chatbot system prompt boundaries and instructions to prevent the bot from repeating the historical session summary back to returning customers, and added robust fallback handling to respond naturally to very short or ambiguous customer messages (like "p").
+- **SQLite3 Binding Error on Media Messages** — Fixed database insert crash for image/video/document messages caused by `fileLength` returning as a custom `Long` object from Baileys instead of a standard JS number, which SQLite3 could not bind.
 
 ## [3.1.0] — 2026-06-14
 
