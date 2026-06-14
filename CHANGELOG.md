@@ -9,6 +9,8 @@
 - **Database Schema Updates** — Rebuilt conversations CHECK constraint to include the `'hold'` status, and added columns `session_timeout_warning_mins` to `bot_config` and `warning_sent` to `conversations`.
 
 ### Fixed
+- **Password Length Validation** — Adjusted the minimum password length requirement from `6` characters to `5` characters in authentication and admin routes, allowing the default Customer Service seed account (`cs@wa-akg.local` / `cs123`) to pass validation and log in successfully.
+- **WhatsApp Gateway Reconnection** — Fixed a critical bug in the WhatsApp Gateway connection update handler where it would fail to reconnect automatically for common disconnect reasons such as connection loss (`connectionLost`), connection closed (`connectionClosed`), or connection replacement (`connectionReplaced`). Updated `isRestart` logic to reconnect for all disconnect reasons except an explicit logout (`loggedOut`).
 - **Session Timeout Background Job** — Restructured and fixed the session timeout check background worker to run correctly every 60s, checking and automatically resolving idle active conversations. Hold conversations are exempt from timeout.
 - **Chat Bubble Alignment** — Fixed mobile/desktop alignment where customer message bubbles are left-aligned and Customer Service (CS) message bubbles are right-aligned.
 - **Admin Save Error Feedback** — Improved error feedback on the admin configuration page. Validates relationship warnings (e.g. warning timeout must be less than session timeout) and displays custom server error messages in the modal instead of a generic failure message.
