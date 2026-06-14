@@ -501,7 +501,14 @@ function CSPerformanceTable() {
 }
 
 function BotConfigPanel() {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    persona_name: string;
+    system_prompt: string;
+    business_info: string;
+    escalation_keywords: string;
+    session_timeout_mins: number | "";
+    auto_close_enabled: boolean;
+  }>({
     persona_name: "",
     system_prompt: "",
     business_info: "",
@@ -539,11 +546,23 @@ function BotConfigPanel() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const timeoutVal = typeof form.session_timeout_mins === "number" && form.session_timeout_mins >= 1
+        ? form.session_timeout_mins
+        : 30;
+
+      const payload = {
+        ...form,
+        session_timeout_mins: timeoutVal,
+      };
+
       const res = await apiFetch("/api/admin/bot-config", {
         method: "PUT",
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("Gagal menyimpan");
+      
+      setForm((f) => ({ ...f, session_timeout_mins: timeoutVal }));
+
       setModal({
         isOpen: true,
         title: "Berhasil",
@@ -646,7 +665,13 @@ function BotConfigPanel() {
             <input
               type="number"
               value={form.session_timeout_mins}
-              onChange={(e) => setForm((f) => ({ ...f, session_timeout_mins: parseInt(e.target.value) || 30 }))}
+              onChange={(e) => {
+                const val = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  session_timeout_mins: val === "" ? "" : parseInt(val) || 0,
+                }));
+              }}
               min={1}
               max={1440}
               className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"

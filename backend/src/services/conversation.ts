@@ -247,6 +247,8 @@ export async function addMessage(params: {
   fileName?: string;
   fileSize?: number;
   waMessageId?: string;
+  replyToContent?: string;
+  replyToSender?: string;
 }): Promise<typeof schema.messages.$inferSelect> {
   const id = generateId();
   const now = new Date().toISOString();
@@ -265,6 +267,8 @@ export async function addMessage(params: {
         file_name: params.fileName || null,
         file_size: params.fileSize || null,
         wa_message_id: params.waMessageId || null,
+        reply_to_content: params.replyToContent || null,
+        reply_to_sender: params.replyToSender || null,
         created_at: now,
       });
 

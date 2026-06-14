@@ -118,17 +118,48 @@ router.post("/:id/messages", async (req: AuthRequest, res: Response) => {
   try {
     const id = req.params.id as string;
     const user = getUser(req);
-    const { content, contentType, mediaUrl, fileData, fileName } = req.body as Record<string, unknown>;
+    const { content, contentType, mediaUrl, fileData, fileName, quotedMessageId } = req.body as Record<string, unknown>;
     const conv = await getConversation(id);
     if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
-    if (conv.status === "resolved") { res.status(400).json({ error: "Conversation is resolved" }); return; }
+    let convStatus = conv.status;
+    let convClaimedBy = conv.claimed_by;
 
-    if (user.role === "cs" && conv.claimed_by !== user.sub && conv.status !== "waiting" && conv.status !== "bot") {
+    if (convStatus === "resolved") {
+      const now = new Date().toISOString();
+      await db
+        .update(schema.conversations)
+        .set({ status: "active", claimed_by: user.sub, updated_at: now })
+        .where(eq(schema.conversations.id, id));
+
+      broadcast("conversation:claimed", { conversationId: id, claimedBy: user.sub, status: "active" });
+      broadcast("conversation:status", { conversationId: id, status: "active", claimedBy: user.sub });
+      requestDashboardBroadcast();
+
+      createAuditLog({
+        userId: user.sub,
+        action: "claim_conversation",
+        entityType: "conversations",
+        entityId: id,
+        details: JSON.stringify({ customer: conv.customer_name || conv.wa_number }),
+      });
+
+      const csUserRows = await db.select().from(schema.users).where(eq(schema.users.id, user.sub)).limit(1);
+      const csUser = csUserRows[0];
+      const csName = csUser?.name || "CS";
+      notifyClaim(conv.customer_name || conv.wa_number, csName, id).catch((err) =>
+        logger.warn("[conversations] Claim notification failed:", err)
+      );
+
+      convStatus = "active";
+      convClaimedBy = user.sub;
+    }
+
+    if (user.role === "cs" && convClaimedBy !== user.sub && convStatus !== "waiting" && convStatus !== "bot") {
       res.status(403).json({ error: "You can only send messages to your claimed conversations" });
       return;
     }
 
-    if (conv.status === "bot" || conv.status === "waiting") {
+    if (convStatus === "bot" || convStatus === "waiting") {
       await claimConversation(id, user.sub);
     }
 
@@ -182,6 +213,28 @@ router.post("/:id/messages", async (req: AuthRequest, res: Response) => {
       localFilePath = filePath;
     }
 
+    let replyToContent: string | undefined = undefined;
+    let replyToSender: string | undefined = undefined;
+    if (quotedMessageId) {
+      const qRows = await db
+        .select()
+        .from(schema.messages)
+        .where(eq(schema.messages.id, quotedMessageId as string))
+        .limit(1);
+      if (qRows.length > 0) {
+        const qm = qRows[0];
+        replyToContent = qm.content || "";
+        if (qm.sender === "cs") {
+          const qUserRows = await db.select().from(schema.users).where(eq(schema.users.id, qm.cs_id || "")).limit(1);
+          replyToSender = qUserRows[0]?.name || "CS";
+        } else if (qm.sender === "bot") {
+          replyToSender = "Bot";
+        } else {
+          replyToSender = conv.customer_name || conv.wa_number;
+        }
+      }
+    }
+
     const msg = await addMessage({
       conversationId: id,
       sender: "cs",
@@ -190,6 +243,8 @@ router.post("/:id/messages", async (req: AuthRequest, res: Response) => {
       contentType: (contentType as "text" | "image" | "video" | "document") || "text",
       mediaUrl: savedMediaUrl,
       fileName: fileName as string | undefined,
+      replyToContent,
+      replyToSender,
     });
 
     try {
@@ -213,8 +268,41 @@ router.post("/:id/messages", async (req: AuthRequest, res: Response) => {
       } else {
         waContent.text = finalContent;
       }
+
+      let quotedOption: any = undefined;
+      if (quotedMessageId) {
+        const quotedRows = await db
+          .select()
+          .from(schema.messages)
+          .where(eq(schema.messages.id, quotedMessageId as string))
+          .limit(1);
+        if (quotedRows.length > 0) {
+          const qm = quotedRows[0];
+          const fromMe = qm.sender === "cs" || qm.sender === "bot";
+          let customerJid: string | null = null;
+          const custRows = await db
+            .select()
+            .from(schema.customers)
+            .where(eq(schema.customers.id, conv.customer_id))
+            .limit(1);
+          if (custRows.length > 0) {
+            customerJid = custRows[0].jid;
+          }
+          quotedOption = {
+            key: {
+              remoteJid: customerJid || `${conv.wa_number}@s.whatsapp.net`,
+              fromMe: fromMe,
+              id: qm.wa_message_id || qm.id,
+            },
+            message: {
+              conversation: qm.content || "",
+            },
+          };
+        }
+      }
+
       if (conv.wa_number) {
-        await sendWaMessage(conv.wa_number, waContent as any);
+        await sendWaMessage(conv.wa_number, waContent as any, quotedOption ? { quoted: quotedOption } : undefined);
       }
     } catch (waErr) {
       logger.error("[conversations] WA send error:", waErr);

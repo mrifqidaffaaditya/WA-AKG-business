@@ -147,6 +147,43 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
 
   let savedMsg: typeof schema.messages.$inferSelect | null = null;
 
+  const contextInfo = msg.message?.extendedTextMessage?.contextInfo ||
+                      msg.message?.imageMessage?.contextInfo ||
+                      msg.message?.videoMessage?.contextInfo ||
+                      msg.message?.documentMessage?.contextInfo;
+
+  let replyToContent: string | undefined = undefined;
+  let replyToSender: string | undefined = undefined;
+
+  if (contextInfo) {
+    const quotedMsgId = contextInfo.stanzaId;
+    if (quotedMsgId) {
+      const quotedRows = await db
+        .select()
+        .from(schema.messages)
+        .where(eq(schema.messages.wa_message_id, quotedMsgId))
+        .limit(1);
+      if (quotedRows.length > 0) {
+        const qm = quotedRows[0];
+        replyToContent = qm.content || "";
+        if (qm.sender === "cs") {
+          const qUserRows = await db.select().from(schema.users).where(eq(schema.users.id, qm.cs_id || "")).limit(1);
+          replyToSender = qUserRows[0]?.name || "CS";
+        } else if (qm.sender === "bot") {
+          replyToSender = "Bot";
+        } else {
+          replyToSender = customer.display_name || customer.wa_number;
+        }
+      } else {
+        const qMsg = contextInfo.quotedMessage;
+        if (qMsg) {
+          replyToContent = qMsg.conversation || qMsg.extendedTextMessage?.text || qMsg.imageMessage?.caption || qMsg.videoMessage?.caption || "";
+          replyToSender = contextInfo.participant ? (contextInfo.participant.includes("@s.whatsapp.net") ? "Customer" : "CS") : "Pesan";
+        }
+      }
+    }
+  }
+
   if (content || contentType !== "text") {
     let mediaUrl: string | undefined;
     let mediaType: string | undefined;
@@ -182,6 +219,8 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
       fileName: fileName || undefined,
       fileSize: fileSize || undefined,
       waMessageId: msg.key?.id || undefined,
+      replyToContent,
+      replyToSender,
     });
   } else {
     savedMsg = await addMessage({
@@ -190,6 +229,8 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
       content: "",
       contentType: "text",
       waMessageId: msg.key?.id || undefined,
+      replyToContent,
+      replyToSender,
     });
   }
 

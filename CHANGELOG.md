@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.5.0] — 2026-06-15
+
+### Added
+- **WhatsApp Message Reply/Quote Feature** — Fully supported two-way message quoting (CS ➔ Customer and Customer ➔ CS). Displays a nested quote preview card inside message bubbles with the original sender's name and quoted content.
+- **Database Schema & Migrations** — Added `reply_to_content` and `reply_to_sender` columns to the `messages` table. The migrator automatically adds these columns on startup if missing.
+- **Incoming Reply Parsing** — WhatsApp webhook listener now parses `contextInfo` of incoming messages, automatically resolving and logging quoted message IDs, contents, and sender names (CS, Bot, or Customer).
+- **Reply UI in CS Panel** — Added a hover reply button next to message bubbles and a floating reply preview bar above the message input area (with a close button to clear).
+
+### Fixed
+- **Reactivate Resolved Conversations** — Sending a message to a resolved conversation now automatically reactivates it to `active` status and claims it for the sending agent, instead of blocking with a 400 `"Conversation is resolved"` error. Broadcasts state changes to websockets, writes an audit log, and triggers group notifications.
+- **Session Timeout Input Field** — Fixed UI bug where deleting the last digit of the timeout input instantly forced it back to `30`. Allows empty strings while typing, validating and defaulting to `30` only on save.
+- **PUT `/api/admin/bot-config` 400 Error** — Fixed a type mismatch validation error where `escalation_keywords` was sent as a comma-separated string from the frontend but required as an array by the backend. The backend now accepts both string and array formats.
+
 ## [3.4.0] — 2026-06-15
 
 ### Added

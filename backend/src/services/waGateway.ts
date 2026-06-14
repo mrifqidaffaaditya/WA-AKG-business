@@ -197,7 +197,8 @@ export async function disconnectWa(): Promise<void> {
 
 export async function sendWaMessage(
   jid: string,
-  content: AnyMessageContent
+  content: AnyMessageContent,
+  options?: any
 ): Promise<proto.WebMessageInfo | null> {
   if (!sock) return null;
   let targetJid = jid;
@@ -222,7 +223,7 @@ export async function sendWaMessage(
       targetJid = getJid(jid);
     }
   }
-  const result = await sock.sendMessage(targetJid, content);
+  const result = await sock.sendMessage(targetJid, content, options);
   if (result && result.key.remoteJid && result.key.id && result.message) {
     localMessageStore.set(result.key.remoteJid, result.key.id, result.message);
   }

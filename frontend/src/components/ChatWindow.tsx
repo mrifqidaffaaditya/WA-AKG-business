@@ -17,6 +17,7 @@ import {
   MoreVertical,
   ArrowLeft,
   Clock,
+  CornerUpLeft,
 } from "lucide-react";
 
 interface Message {
@@ -29,6 +30,8 @@ interface Message {
   content_type?: "text" | "image" | "video" | "document" | "audio";
   media_url?: string | null;
   file_name?: string | null;
+  reply_to_content?: string | null;
+  reply_to_sender?: string | null;
   created_at: string;
 }
 
@@ -94,6 +97,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   const [resolveReview, setResolveReview] = useState("");
   const [claimLoading, setClaimLoading] = useState(false);
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   const messageContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -191,6 +195,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
     setFile(null);
     setFilePreview(null);
     setNewMessageBadge(false);
+    setReplyingTo(null);
     isAtBottomRef.current = true;
 
     apiFetch("/api/conversations/" + conversation.id + "/messages?limit=30&direction=older")
@@ -276,11 +281,13 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
       content: input.trim(),
       contentType,
       ...(fileData && { fileData, fileName }),
+      ...(replyingTo && { quotedMessageId: replyingTo.id }),
     };
 
     setInput("");
     setFile(null);
     setFilePreview(null);
+    setReplyingTo(null);
 
     try {
       const res = await apiFetch("/api/conversations/" + conversation.id + "/messages", {
@@ -546,8 +553,8 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
               <div
                 key={msg.id}
                 className={
-                  "flex w-full animate-bubble-in " +
-                  (isCustomer || isBot ? "justify-start" : "justify-end")
+                  "flex w-full animate-bubble-in group items-center gap-2 " +
+                  (isCustomer || isBot ? "justify-start flex-row" : "justify-end flex-row-reverse")
                 }
               >
                 <div className="flex flex-col max-w-[85%] sm:max-w-[70%]">
@@ -573,6 +580,16 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                         : "bg-slate-700/80 text-slate-100 border border-slate-600/50 rounded-tr-sm")
                     }
                   >
+                    {msg.reply_to_content && (
+                      <div className="mb-2 p-2 border-l-2 border-emerald-500 bg-black/20 rounded-r-lg text-xs max-w-full">
+                        <span className="font-semibold text-emerald-400 block mb-0.5">
+                          {msg.reply_to_sender || "Pesan"}
+                        </span>
+                        <p className="text-slate-300 truncate">
+                          {msg.reply_to_content}
+                        </p>
+                      </div>
+                    )}
                     {msg.content_type === "image" && (
                       <div className="mb-2 overflow-hidden rounded-xl border border-white/10">
                         <img
@@ -656,6 +673,13 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                     </div>
                   </div>
                 </div>
+                <button
+                  onClick={() => setReplyingTo(msg)}
+                  className="p-1.5 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer shrink-0"
+                  title="Balas pesan ini"
+                >
+                  <CornerUpLeft size={16} />
+                </button>
               </div>
             );
           })}
@@ -701,6 +725,28 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
             : "border-t border-slate-800/50")
         }
       >
+        {replyingTo && (
+          <div className="mb-3 p-3 border border-slate-850 rounded-xl bg-slate-800/40 flex items-start justify-between gap-3 animate-slideUp relative overflow-hidden animate-fadeIn">
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />
+            <div className="flex-1 min-w-0 pl-1.5">
+              <span className="text-[10px] font-semibold text-emerald-400 block mb-0.5">
+                Membalas ke {replyingTo.sender === "customer" ? (conversation?.customer_name || formatPhone(conversation?.wa_number)) : (replyingTo.cs_name || "CS")}
+              </span>
+              <p className="text-xs text-slate-300 truncate font-normal">
+                {replyingTo.content_type === "image" ? "[Gambar]" :
+                 replyingTo.content_type === "video" ? "[Video]" :
+                 replyingTo.content_type === "document" ? `[Dokumen] ${replyingTo.file_name || ""}` :
+                 replyingTo.content}
+              </p>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              className="p-1 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors cursor-pointer shrink-0"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {filePreview && (
           <div className="mb-3 p-2 border border-slate-700 rounded-xl bg-slate-800/50 flex items-center gap-3 w-max animate-slideUp">
             <img

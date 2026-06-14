@@ -61,6 +61,8 @@ export const messages = sqliteTable("messages", {
   file_name: text("file_name"),
   file_size: integer("file_size"),
   wa_message_id: text("wa_message_id"),
+  reply_to_content: text("reply_to_content"),
+  reply_to_sender: text("reply_to_sender"),
   created_at: text("created_at").notNull(),
 }, (table) => ({
   waMessageIdIdx: uniqueIndex("wa_message_id_idx").on(table.wa_message_id),

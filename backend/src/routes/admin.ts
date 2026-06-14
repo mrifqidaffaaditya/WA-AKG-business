@@ -42,8 +42,8 @@ function validateBotConfigFields(body: Record<string, unknown>): string | null {
   if (body.business_info !== undefined && typeof body.business_info !== "string") {
     return "business_info must be a string";
   }
-  if (body.escalation_keywords !== undefined && !Array.isArray(body.escalation_keywords)) {
-    return "escalation_keywords must be an array";
+  if (body.escalation_keywords !== undefined && typeof body.escalation_keywords !== "string" && !Array.isArray(body.escalation_keywords)) {
+    return "escalation_keywords must be a string or an array";
   }
   return null;
 }
@@ -100,7 +100,11 @@ router.put("/bot-config", async (req: AuthRequest, res) => {
     if (persona_name !== undefined) updates.persona_name = persona_name;
     if (system_prompt !== undefined) updates.system_prompt = system_prompt;
     if (business_info !== undefined) updates.business_info = business_info;
-    if (escalation_keywords !== undefined) updates.escalation_keywords = escalation_keywords;
+    if (escalation_keywords !== undefined) {
+      updates.escalation_keywords = Array.isArray(escalation_keywords)
+        ? escalation_keywords.join(",")
+        : escalation_keywords;
+    }
     if (session_timeout_mins !== undefined) updates.session_timeout_mins = session_timeout_mins;
     if (auto_close_enabled !== undefined) updates.auto_close_enabled = auto_close_enabled;
 

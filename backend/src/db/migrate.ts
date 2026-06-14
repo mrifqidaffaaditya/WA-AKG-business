@@ -178,6 +178,8 @@ async function run() {
 
     await addColumnIfNotExists("cs_config", "wa_group_notif_enabled", "INTEGER NOT NULL DEFAULT 0");
     await addColumnIfNotExists("cs_config", "wa_group_jid", "TEXT NOT NULL DEFAULT ''");
+    await addColumnIfNotExists("messages", "reply_to_content", "TEXT");
+    await addColumnIfNotExists("messages", "reply_to_sender", "TEXT");
 
     await client.execute("COMMIT");
     console.log("[migrate] Done.");
