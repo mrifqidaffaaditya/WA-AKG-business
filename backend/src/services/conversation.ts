@@ -382,24 +382,33 @@ export async function getConversations(params: {
     conditions.push(eq(schema.conversations.claimed_by, params.claimedBy));
   }
 
+  const lastMsgAtSql = sql<string>`(
+    SELECT MAX(created_at) FROM ${schema.messages} 
+    WHERE ${schema.messages.conversation_id} = ${schema.conversations.id}
+  )`;
+
+  const lastMsgOrCreated = sql`COALESCE(${lastMsgAtSql}, ${schema.conversations.created_at})`;
+
   if (params.cursor) {
-    conditions.push(lt(schema.conversations.updated_at, params.cursor));
+    conditions.push(lt(lastMsgOrCreated, params.cursor));
   }
 
   const rows = await db
     .select({
       conversation: schema.conversations,
       claimed_by_name: schema.users.name,
+      last_msg_at: lastMsgOrCreated,
     })
     .from(schema.conversations)
     .leftJoin(schema.users, eq(schema.conversations.claimed_by, schema.users.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(schema.conversations.updated_at))
+    .orderBy(desc(lastMsgOrCreated))
     .limit(limit + 1);
 
   const mappedRows = rows.map(r => ({
     ...r.conversation,
     claimed_by_name: r.claimed_by_name,
+    last_msg_at: r.last_msg_at,
   }));
 
   const hasMore = mappedRows.length > limit;
@@ -407,7 +416,7 @@ export async function getConversations(params: {
 
   let nextCursor: string | null = null;
   if (hasMore && conversations.length > 0) {
-    nextCursor = conversations[conversations.length - 1].updated_at;
+    nextCursor = (conversations[conversations.length - 1] as any).last_msg_at;
   }
 
   return { conversations, nextCursor, hasMore };

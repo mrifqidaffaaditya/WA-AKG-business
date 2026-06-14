@@ -168,7 +168,8 @@ async function run() {
       if (convSql && !convSql.includes("'hold'")) {
         console.log("[migrate] Migrating conversations table status check constraint to include 'hold'...");
         await client.execute("PRAGMA foreign_keys = OFF");
-        await client.execute("ALTER TABLE conversations RENAME TO conversations_old");
+        await client.execute("CREATE TABLE conversations_temp AS SELECT id, customer_id, wa_number, customer_name, status, claimed_by, rating, review, warning_sent, created_at, updated_at FROM conversations");
+        await client.execute("DROP TABLE conversations");
         await client.execute(`
           CREATE TABLE conversations (
             id TEXT PRIMARY KEY,
@@ -186,9 +187,9 @@ async function run() {
         `);
         await client.execute(`
           INSERT INTO conversations (id, customer_id, wa_number, customer_name, status, claimed_by, rating, review, warning_sent, created_at, updated_at)
-          SELECT id, customer_id, wa_number, customer_name, status, claimed_by, rating, review, 0, created_at, updated_at FROM conversations_old
+          SELECT id, customer_id, wa_number, customer_name, status, claimed_by, rating, review, warning_sent, created_at, updated_at FROM conversations_temp
         `);
-        await client.execute("DROP TABLE conversations_old");
+        await client.execute("DROP TABLE conversations_temp");
         await client.execute("CREATE INDEX IF NOT EXISTS idx_conversations_status_updated ON conversations(status, updated_at DESC)");
         await client.execute("PRAGMA foreign_keys = ON");
         console.log("[migrate] Conversations table check constraint updated successfully.");

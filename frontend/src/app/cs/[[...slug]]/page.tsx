@@ -314,7 +314,8 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
           };
 
           const newArr = [...prev];
-          newArr[idx] = updatedConv;
+          newArr.splice(idx, 1);
+          newArr.unshift(updatedConv);
           return newArr;
         }
         return prev;
