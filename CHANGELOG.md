@@ -19,6 +19,9 @@
 - **Role Hierarchy & Security** — Implemented strict role hierarchy: `super_admin` (level 3) > `admin` (level 2) > `cs` (level 1). Enforced server-side: users can only create/edit/delete users with lower role levels, cannot modify themselves, and cannot assign roles at or above their own level. Token revocation now fires on role changes (not just password changes). Frontend admin panel: role dropdowns filter to only allowed lower roles, Edit/Delete/Toggle buttons are disabled for higher/same-role and self users with contextual tooltips.
 - **Login Page Null Role Crash** — Fixed `Cannot read properties of null (reading 'role')` error on login page. Changed `user.role` to `user?.role` in redirect effect at `login/page.tsx:51`.
 
+### Known Issues
+- **Admin Users Page — `Cannot read properties of null (reading 'role')`** — Pada halaman `/admin?tab=users`, muncul error: `Uncaught TypeError: Cannot read properties of null (reading 'role')` di chunk `page-7751581f67938be3.js`. Error terjadi di fungsi `W` dalam admin page, kemungkinan dari komponen `UserPanel` setelah penambahan hierarchy role (`canModify`, `allowedRoles`). Seluruh akses `user.role` di source admin sudah menggunakan `?.` — kemungkinan Next.js build cache tidak meng-invalidate chunk hash. Perlu investigasi lebih lanjut.
+
 ## [3.4.1] — 2026-06-15
 
 ### Added
