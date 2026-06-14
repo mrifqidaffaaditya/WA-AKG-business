@@ -48,7 +48,7 @@ function LoginForm() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace(returnTo || (user.role === "cs" ? "/cs" : "/admin"));
+      router.replace(returnTo || (user?.role === "cs" ? "/cs" : "/admin"));
     }
   }, [loading, user, router, returnTo]);
 
