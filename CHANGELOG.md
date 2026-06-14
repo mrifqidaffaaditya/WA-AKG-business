@@ -1,6 +1,19 @@
 # Changelog
 
+## [3.2.0] — 2026-06-14
+
+### Added
+- **Online/Offline User Tracking** — Added real-time user online tracking via socket connections and displayed on the user table in the admin panel with a pulsing green dot indicator.
+- **Database-backed CS Signatures** — Moved automatic CS signature configuration into SQLite (`csConfig` table) instead of a local configuration file, allowing editing and configuration persistence in the database.
+
+### Changed
+- **CS Tab Panel Order** — Swapped order of chat tabs in both desktop sidebar and mobile top navigation views to: `My Chat` -> `Antrean` (Queue) -> `Semua` (All).
+- **Phone Number Formatting** — Simplified `formatPhone` to remove all spaces, hyphens, and return a clean unified digit format prefixed with a `+` (e.g. `+6287748687946`).
+- **Duplicate & Blank Message Prevention** — Improved orchestrator to ignore empty status/read/delivery reports from Baileys, filter out self-sent (`fromMe: true`) messages, and drop duplicates by checking `waMessageId` against SQLite.
+- **LID Conversation Mapping** — Updated orchestrator to automatically map unknown numbers/LID senders (`key.senderPn || remoteJid`) to extract the real JID/phone number.
+
 ## [3.1.0] — 2026-06-14
+
 
 ### 🎨 UI Redesign — Sidebar Navigation & Chat Stability
 
