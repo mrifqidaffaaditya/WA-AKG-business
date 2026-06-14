@@ -7,6 +7,7 @@
 **Changelog:**
 - v1.1.0 — Tambah sistem notifikasi browser (Push Notification)
 - v1.2.0 — Tambah optimisasi returning customer & infinity scroll riwayat chat
+- v1.3.0 — Tambah deteksi jam operasional real-time untuk chatbot AI
 
 ---
 

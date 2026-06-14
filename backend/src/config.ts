@@ -48,7 +48,9 @@ export const config = {
     messagesSoftCap: parseInt(process.env.MESSAGES_SOFT_CAP || "5000", 10),
   },
 
+  rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== "false",
   contextExpiryDays: parseInt(process.env.CONTEXT_EXPIRY_DAYS || "90", 10),
+  timezone: process.env.TIMEZONE || "Asia/Jakarta",
   notifQueueThreshold: parseInt(process.env.NOTIF_QUEUE_THRESHOLD || "5", 10),
   notifDebounceSeconds: parseInt(process.env.NOTIF_DEBOUNCE_SECONDS || "30", 10),
 

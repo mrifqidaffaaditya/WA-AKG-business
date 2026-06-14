@@ -1,6 +1,7 @@
 const BASE = "";
 
 let accessToken: string | null = null;
+let refreshPromise: Promise<string | null> | null = null;
 
 export function setTokens(access: string) {
   accessToken = access;
@@ -31,27 +32,37 @@ export function getAccessToken(): string | null {
 }
 
 async function refreshAccessToken(): Promise<string | null> {
-  const res = await fetch(BASE + "/api/auth/refresh", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const res = await fetch(BASE + "/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+
+    if (!res.ok) {
+      clearTokens();
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login";
+      }
+      return null;
+    }
+
+    const data = await res.json();
+    const newAccess = data.accessToken || data.access_token;
+    accessToken = newAccess;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("access_token", newAccess);
+    }
+    return newAccess;
+  })();
+
+  refreshPromise.finally(() => {
+    refreshPromise = null;
   });
 
-  if (!res.ok) {
-    clearTokens();
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
-    return null;
-  }
-
-  const data = await res.json();
-  const newAccess = data.accessToken || data.access_token;
-  accessToken = newAccess;
-  if (typeof window !== "undefined") {
-    localStorage.setItem("access_token", newAccess);
-  }
-  return newAccess;
+  return refreshPromise;
 }
 
 async function makeRequest(

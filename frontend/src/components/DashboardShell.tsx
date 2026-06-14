@@ -20,7 +20,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Headset,
-  ChevronLeft,
   Menu,
   X as XIcon,
 } from "lucide-react";
@@ -48,7 +47,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
     name: user?.name || "",
     claim_template: "",
     close_template: "",
-    sound_notification: typeof window !== "undefined" ? localStorage.getItem("sound_enabled") !== "false" : true,
+    sound_notification:
+      typeof window !== "undefined"
+        ? localStorage.getItem("sound_enabled") !== "false"
+        : true,
   });
 
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -86,7 +88,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       });
       if (res.ok) {
         updateUser({ name: profileForm.name });
-        localStorage.setItem("sound_enabled", profileForm.sound_notification.toString());
+        localStorage.setItem(
+          "sound_enabled",
+          profileForm.sound_notification.toString()
+        );
         setModalState({
           isOpen: true,
           title: "Berhasil",
@@ -108,7 +113,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   };
 
   const roleColors: Record<string, string> = {
-    super_admin: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+    super_admin:
+      "bg-purple-500/15 text-purple-400 border-purple-500/30",
     admin: "bg-blue-500/15 text-blue-400 border-blue-500/30",
     cs: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   };
@@ -119,45 +125,52 @@ export default function DashboardShell({ children }: DashboardShellProps) {
     cs: "CS",
   };
 
+  const avatarGradient = (name: string) => {
+    const hash = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    const hues = ["emerald", "teal", "cyan", "blue", "violet", "purple"];
+    const hue = hues[hash % hues.length];
+    return `from-${hue}-500/20 to-${hue}-700/20`;
+  };
+
   return (
-    <div className="flex h-[100dvh] bg-[#0A0F1C] overflow-hidden text-slate-300 font-sans selection:bg-emerald-500/30">
-      {/* Mobile Overlay */}
+    <div className="flex h-[100dvh] bg-[#0A0F1C] overflow-hidden text-slate-300 selection:bg-emerald-500/30">
       {mobileOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden transition-opacity"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={
-          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-800/60 bg-[#0B1221] shadow-2xl transition-all duration-300 transform " +
-          (mobileOpen ? "translate-x-0 " : "-translate-x-full ") +
+          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-800/50 bg-[#0B1221]/90 backdrop-blur-xl shadow-2xl transition-all duration-300 ease-out transform " +
+          (mobileOpen
+            ? "translate-x-0 "
+            : "-translate-x-full ") +
           "md:relative md:translate-x-0 shrink-0 " +
-          (collapsed ? "md:w-20" : "w-64")
+          (collapsed ? "md:w-[72px]" : "w-64")
         }
       >
-        <div className="flex items-center justify-between px-5 h-16 border-b border-slate-800/60 shrink-0">
+        <div className="flex items-center justify-between px-4 h-16 border-b border-slate-800/50 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400/20 to-emerald-600/20 border border-emerald-500/20 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/10">
               <MessageCircle size={20} className="text-emerald-400" />
             </div>
             {(!collapsed || mobileOpen) && (
-              <span className="text-base font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-slate-400 truncate">
+              <span className="text-base font-bold text-slate-100 tracking-tight truncate">
                 WA-AKG
               </span>
             )}
           </div>
-          <button 
-            className="md:hidden p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition-colors"
+          <button
+            className="md:hidden p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition-colors cursor-pointer"
             onClick={() => setMobileOpen(false)}
           >
             <XIcon size={20} />
           </button>
         </div>
 
-        <nav className="flex-1 flex flex-col px-3 py-6 gap-2 overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <nav className="flex-1 flex flex-col px-2 py-4 gap-1 overflow-y-auto overflow-x-hidden">
           {navItems.map((item) => (
             <button
               key={item.tab}
@@ -166,86 +179,126 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 setMobileOpen(false);
               }}
               className={
-                "flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-sm transition-all duration-200 group relative overflow-hidden " +
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 cursor-pointer relative " +
                 (isTabActive(item.tab)
-                  ? "bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/10 shadow-sm"
-                  : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 border border-transparent")
+                  ? "bg-emerald-500/10 text-emerald-400 font-semibold"
+                  : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200")
               }
-              title={collapsed && !mobileOpen ? item.label : undefined}
+              title={
+                collapsed && !mobileOpen ? item.label : undefined
+              }
             >
+              {isTabActive(item.tab) && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+              )}
               <item.icon
                 size={20}
                 className={
-                  "shrink-0 transition-transform duration-200 " +
-                  (isTabActive(item.tab) ? "text-emerald-400 scale-110" : "group-hover:scale-110 group-hover:text-slate-300")
+                  "shrink-0 transition-all duration-200 " +
+                  (isTabActive(item.tab)
+                    ? "text-emerald-400"
+                    : "group-hover:text-slate-300")
                 }
               />
-              {(!collapsed || mobileOpen) && <span className="truncate">{item.label}</span>}
-              {isTabActive(item.tab) && (!collapsed || mobileOpen) && (
-                <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+              {(!collapsed || mobileOpen) && (
+                <span className="truncate">{item.label}</span>
               )}
             </button>
           ))}
         </nav>
 
-        <div className="px-3 py-4 border-t border-slate-800/60 bg-slate-950/30 flex flex-col gap-2">
+        <div className="px-2 py-3 border-t border-slate-800/50 flex flex-col gap-1">
           {isAdmin && (
             <button
               onClick={() => {
                 router.push("/cs?tab=all");
                 setMobileOpen(false);
               }}
-              className="flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-sm text-slate-400 hover:bg-slate-800/50 hover:text-emerald-300 transition-all duration-200 w-full group border border-transparent"
-              title={collapsed && !mobileOpen ? "Panel CS" : undefined}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-800/50 hover:text-emerald-300 transition-all duration-200 cursor-pointer"
+              title={
+                collapsed && !mobileOpen ? "Panel CS" : undefined
+              }
             >
-              <Headset size={20} className="shrink-0 group-hover:scale-110 transition-transform" />
-              {(!collapsed || mobileOpen) && <span className="truncate font-medium">Panel CS</span>}
+              <Headset
+                size={20}
+                className="shrink-0 transition-transform duration-200 hover:scale-110"
+              />
+              {(!collapsed || mobileOpen) && (
+                <span className="truncate font-medium">Panel CS</span>
+              )}
             </button>
           )}
 
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="hidden md:flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-sm text-slate-500 hover:bg-slate-800/50 hover:text-slate-300 transition-all duration-200 w-full group border border-transparent"
+            className="hidden md:flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-800/50 hover:text-slate-300 transition-all duration-200 cursor-pointer"
             title={collapsed ? "Expand" : "Collapse"}
           >
             {collapsed ? (
-              <PanelLeftOpen size={20} className="shrink-0 group-hover:scale-110 transition-transform" />
+              <PanelLeftOpen
+                size={20}
+                className="shrink-0 transition-transform duration-200"
+              />
             ) : (
-              <PanelLeftClose size={20} className="shrink-0 group-hover:scale-110 transition-transform" />
+              <PanelLeftClose
+                size={20}
+                className="shrink-0 transition-transform duration-200"
+              />
             )}
-            {!collapsed && <span className="truncate font-medium">Collapse</span>}
+            {!collapsed && (
+              <span className="truncate font-medium">Collapse</span>
+            )}
           </button>
 
           <button
             onClick={() => {
-              setProfileForm((f) => ({ ...f, name: user?.name || "" }));
+              setProfileForm((f) => ({
+                ...f,
+                name: user?.name || "",
+              }));
               setSettingsOpen(true);
               setMobileOpen(false);
             }}
-            className="flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-all duration-200 w-full group border border-transparent"
-            title={collapsed && !mobileOpen ? "Pengaturan" : undefined}
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-all duration-200 cursor-pointer"
+            title={
+              collapsed && !mobileOpen
+                ? "Pengaturan"
+                : undefined
+            }
           >
-            <Settings size={20} className="shrink-0 group-hover:scale-110 transition-transform group-hover:rotate-45" />
-            {(!collapsed || mobileOpen) && <span className="truncate font-medium">Pengaturan</span>}
+            <Settings
+              size={20}
+              className="shrink-0 transition-transform duration-300 hover:rotate-90"
+            />
+            {(!collapsed || mobileOpen) && (
+              <span className="truncate font-medium">Pengaturan</span>
+            )}
           </button>
 
           <button
             onClick={logout}
-            className="flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-sm text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200 w-full group border border-transparent hover:border-red-500/20"
-            title={collapsed && !mobileOpen ? "Keluar" : undefined}
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200 cursor-pointer"
+            title={
+              collapsed && !mobileOpen ? "Keluar" : undefined
+            }
           >
-            <LogOut size={20} className="shrink-0 group-hover:scale-110 transition-transform" />
-            {(!collapsed || mobileOpen) && <span className="truncate font-medium">Keluar</span>}
+            <LogOut
+              size={20}
+              className="shrink-0 transition-transform duration-200 hover:scale-110"
+            />
+            {(!collapsed || mobileOpen) && (
+              <span className="truncate font-medium">Keluar</span>
+            )}
           </button>
         </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 bg-[#0A0F1C]">
-        <header className="h-16 flex items-center justify-between px-4 sm:px-6 border-b border-slate-800/60 bg-[#0B1221]/80 backdrop-blur-md sticky top-0 z-30 shrink-0">
+        <header className="h-16 flex items-center justify-between px-4 sm:px-6 border-b border-slate-800/50 glass shrink-0 z-30">
           <div className="flex items-center gap-4">
-            <button 
+            <button
               onClick={() => setMobileOpen(true)}
-              className="md:hidden p-2 -ml-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
+              className="md:hidden p-2 -ml-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors cursor-pointer"
             >
               <Menu size={24} />
             </button>
@@ -266,14 +319,22 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               <span
                 className={
                   "text-[10px] mt-0.5 px-2 py-0.5 rounded-md font-medium border " +
-                  (roleColors[user?.role || "cs"] || roleColors.cs)
+                  (roleColors[user?.role || "cs"] ||
+                    roleColors.cs)
                 }
               >
                 {roleLabels[user?.role || "cs"] || "CS"}
               </span>
             </div>
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600 flex items-center justify-center text-sm font-bold text-slate-300 shadow-inner">
-              {(user?.name || "G")[0].toUpperCase()}
+            <div className="relative">
+              <div
+                className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(
+                  user?.name || "G"
+                )} border border-emerald-500/20 flex items-center justify-center text-sm font-bold text-slate-200 shadow-inner`}
+              >
+                {(user?.name || "G")[0].toUpperCase()}
+              </div>
+              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-950 shadow-sm" />
             </div>
           </div>
         </header>
@@ -290,14 +351,19 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       >
         <div className="space-y-5 mt-4">
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">Nama Lengkap</label>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">
+              Nama Lengkap
+            </label>
             <input
               type="text"
               value={profileForm.name}
               onChange={(e) =>
-                setProfileForm((f) => ({ ...f, name: e.target.value }))
+                setProfileForm((f) => ({
+                  ...f,
+                  name: e.target.value,
+                }))
               }
-              className="w-full rounded-xl bg-[#0B1221] border border-slate-700/60 px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all shadow-inner"
+              className="w-full rounded-xl bg-[#0B1221] border border-slate-700/60 px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all"
             />
           </div>
           <div>
@@ -307,10 +373,13 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             <textarea
               value={profileForm.claim_template}
               onChange={(e) =>
-                setProfileForm((f) => ({ ...f, claim_template: e.target.value }))
+                setProfileForm((f) => ({
+                  ...f,
+                  claim_template: e.target.value,
+                }))
               }
               rows={3}
-              className="w-full rounded-xl bg-[#0B1221] border border-slate-700/60 px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 resize-none transition-all shadow-inner"
+              className="w-full rounded-xl bg-[#0B1221] border border-slate-700/60 px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 resize-none transition-all"
               placeholder="Halo, saya CS akan membantu Anda..."
             />
           </div>
@@ -321,10 +390,13 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             <textarea
               value={profileForm.close_template}
               onChange={(e) =>
-                setProfileForm((f) => ({ ...f, close_template: e.target.value }))
+                setProfileForm((f) => ({
+                  ...f,
+                  close_template: e.target.value,
+                }))
               }
               rows={3}
-              className="w-full rounded-xl bg-[#0B1221] border border-slate-700/60 px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 resize-none transition-all shadow-inner"
+              className="w-full rounded-xl bg-[#0B1221] border border-slate-700/60 px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 resize-none transition-all"
               placeholder="Terima kasih, percakapan ini ditutup..."
             />
           </div>
@@ -333,8 +405,12 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               <Volume2 size={16} className="text-emerald-400" />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-medium text-slate-200">Suara Notifikasi</span>
-              <span className="text-[11px] text-slate-500">Bunyi saat pesan baru masuk</span>
+              <span className="text-sm font-medium text-slate-200">
+                Suara Notifikasi
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Bunyi saat pesan baru masuk
+              </span>
             </div>
             <button
               onClick={() =>
@@ -344,21 +420,25 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 }))
               }
               className={
-                "ml-auto relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 " +
-                (profileForm.sound_notification ? "bg-emerald-500" : "bg-slate-700")
+                "ml-auto relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 cursor-pointer " +
+                (profileForm.sound_notification
+                  ? "bg-emerald-500"
+                  : "bg-slate-700")
               }
             >
               <span
                 className={
                   "absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform duration-300 shadow-sm " +
-                  (profileForm.sound_notification ? "translate-x-6" : "translate-x-0")
+                  (profileForm.sound_notification
+                    ? "translate-x-6"
+                    : "translate-x-0")
                 }
               />
             </button>
           </div>
           <button
             onClick={handleSaveProfile}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 py-3 text-sm font-semibold text-white transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 active:scale-[0.98]"
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 py-3 text-sm font-semibold text-white transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 active:scale-[0.98] cursor-pointer"
           >
             <Save size={18} />
             Simpan Perubahan
@@ -368,7 +448,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
 
       <Modal
         isOpen={modalState.isOpen}
-        onClose={() => setModalState((m) => ({ ...m, isOpen: false }))}
+        onClose={() =>
+          setModalState((m) => ({ ...m, isOpen: false }))
+        }
         title={modalState.title}
         message={modalState.message}
         type={modalState.type}

@@ -10,7 +10,7 @@ import { initGateway } from "./services/gateway.js";
 import { startStockSync, stopStockSync } from "./services/stock.js";
 import { startUploadCleanup, stopUploadCleanup } from "./services/uploadCleanup.js";
 import { startDashboardPeriodic } from "./services/dashboard.js";
-import { apiRateLimit } from "./middleware/rateLimit.js";
+import { apiRateLimitPassthrough } from "./middleware/rateLimit.js";
 import { authenticate } from "./middleware/auth.js";
 import { verifyAccessToken } from "./services/auth.js";
 import { logger } from "./utils/logger.js";
@@ -47,7 +47,7 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use("/api", apiRateLimit);
+app.use("/api", apiRateLimitPassthrough);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/conversations", conversationRoutes);

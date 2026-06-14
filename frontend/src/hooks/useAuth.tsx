@@ -36,14 +36,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   const fetchUser = useCallback(async () => {
-    try {
-      const data = await get<{ user: User }>("/api/auth/me");
-      setUserState(data.user);
-    } catch {
-      setUserState(null);
-    } finally {
-      setLoading(false);
+    let attempts = 0;
+    while (attempts < 2) {
+      try {
+        const data = await get<{ user: User }>("/api/auth/me");
+        setUserState(data.user);
+        setLoading(false);
+        return;
+      } catch {
+        attempts++;
+        if (attempts < 2) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
     }
+    setUserState(null);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -71,8 +79,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     setTokens(data.accessToken || data.access_token);
 
-    const me = await get<{ user: User }>("/api/auth/me");
-    setUserState(me.user);
+    try {
+      const me = await get<{ user: User }>("/api/auth/me");
+      setUserState(me.user);
+    } catch {
+      throw new Error("Gagal memuat data pengguna");
+    }
   };
 
   const logout = async () => {

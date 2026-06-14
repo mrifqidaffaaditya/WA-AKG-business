@@ -1,5 +1,29 @@
 # Changelog
 
+## [3.4.0] — 2026-06-15
+
+### Added
+- **Real-Time Business Hours for Chatbot AI** — The AI chatbot now receives the current day, time, and store open/closed status as hidden context. Parses `business_info` text (e.g., "Senin-Jumat 09:00-17:00 WIB") to determine real-time open/closed status. Injected into `[INFORMASI BISNIS]` system prompt block. Format: `Waktu sekarang: Selasa, 17:23 WIB. Status toko: BUKA (tutup jam 17:00).`
+- **`TIMEZONE` Environment Variable** — New `TIMEZONE` env var (default: `Asia/Jakarta`) to configure the timezone used for business hours detection via IANA timezone IDs.
+- **Conversation List Search** — Search/filter input in the CS conversation sidebar. Filters by customer name, WhatsApp number, or last message content in real-time.
+- **Virtuoso Virtualized List** — Replaced plain `.map()` rendering with `react-virtuoso` for O(1) DOM rendering regardless of list size. Smooth scrolling with hundreds/thousands of conversations.
+- **Rate Limiting Toggle** — `RATE_LIMIT_ENABLED` env var (default: `true`). Set to `false` to disable all rate limits globally. All rate limiters have conditional passthrough wrappers.
+
+### Changed
+- **CS Conversation Access** — Removed 403 restriction. Any CS agent can now view any conversation even if claimed by another CS. Removed "Akses Terbatas" modal from frontend. Browser notifications and sound alerts now play for all active chat messages regardless of which CS claimed the conversation.
+- **Rate Limiting Key** — Rate limits now keyed by auth token (not IP) to work behind Cloudflare/nginx. All limits raised: API 300/min, refresh 20/15min, login 10/15min.
+- **Default CS Tab** — Default tab changed from "Semua" to "My Chat" (`mine`) for both new CS sessions and middleware redirects.
+- **Static Tabs + Search** — Tab bar and search input are now fixed `shrink-0` elements in the conversation sidebar, not part of the scrollable virtualized list.
+- **Chat List Stability** — New incoming messages no longer reorder the conversation list (in-place update instead of splice+unshift).
+- **Conversation Click** — Clicking a chat now uses `window.history.replaceState` instead of `router.replace`, eliminating Next.js SSR roundtrip / page refresh.
+- **Mobile Chat Header** — Compact layout: smaller avatar, icon-only Claim/Resolve buttons (labels visible on `sm:`+), flex-wrap avatar+status+info to prevent overlap on narrow screens.
+- **WA Group Notification URLs** — Fixed from `?tab=all&chatId=X` to `/cs/X?tab=all` path segments. Timestamps now honor `TIMEZONE` env var.
+- **Login Page** — Removed middleware redirect from `/login` → `/dashboard` (was causing infinite loops with expired cookies). Fixed `fetchUser` never setting `loading = false` on success.
+
+### Fixed
+- **SQLite WAL Migration Error** — `PRAGMA journal_mode = WAL` now runs before `BEGIN TRANSACTION` to avoid SQLite error.
+- **IPv6 Rate Limit Crash** — Custom `keyGenerator` no longer accesses `req.ip` directly, fixing express-rate-limit v7+ validation error.
+
 ## [3.3.0] — 2026-06-14
 
 ### Added

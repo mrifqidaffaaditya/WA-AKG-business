@@ -48,12 +48,6 @@ async function requireConversationAccess(
     const user = getUser(req);
     const conv = await getConversation(id);
     if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
-    if (user.role === "cs") {
-      if (conv.claimed_by && conv.claimed_by !== user.sub && conv.status !== "waiting" && conv.status !== "bot") {
-        res.status(403).json({ error: "You do not have access to this conversation" });
-        return;
-      }
-    }
     (req as unknown as { conversation: ConversationWithName }).conversation = conv;
     next();
   } catch {

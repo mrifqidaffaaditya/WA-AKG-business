@@ -5,6 +5,7 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import { generateId } from "../utils/id.js";
 import { hashPassword, revokeAllUserTokens } from "../services/auth.js";
 import { adminMutationRateLimit } from "../middleware/rateLimit.js";
+import { config } from "../config.js";
 import { createAuditLog } from "../utils/audit.js";
 import { previewStock, clearStockCache, syncStockNow } from "../services/stock.js";
 import { logger } from "../utils/logger.js";
@@ -51,7 +52,7 @@ const router = Router();
 
 router.use(authenticate);
 router.use(requireRole("super_admin", "admin"));
-router.use(adminMutationRateLimit);
+if (config.rateLimitEnabled) router.use(adminMutationRateLimit);
 
 // ── Bot Config ──────────────────────────────────────────────
 

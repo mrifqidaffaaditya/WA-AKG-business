@@ -31,7 +31,7 @@ docker compose up --build        # Retry
 - **CS Config fields**: `wa_group_notif_enabled` (bool), `wa_group_jid` (text)
 - **New services**: `waGroupNotif.ts` — WhatsApp group notification sender
 - **Audit**: Now covers `claim_conversation`, `resolve_conversation` in addition to admin actions
-- **Middleware**: `requireConversationAccess` validates conversation existence + CS access rights
+- **Middleware**: `requireConversationAccess` validates conversation existence (no more CS 403 — any CS can view any conversation)
 - **CS Stats**: `GET /api/admin/cs-stats` — per-user claimed/resolved/active/rating stats
 
 ## Frontend
@@ -67,3 +67,5 @@ docker compose up --build        # Retry
 - Admin page: apiFetch uses `/api/admin/...` path, response MUST be array for `e.map`
 - **DB migrations must add new columns at end of migrate script with `addColumnIfNotExists`**
 - **Middleware must check `isLogin` before redirecting to avoid redirect loops**
+- **Real-time business hours**: `parseBusinessHours()` in `chatbot.ts` parses `business_info` text to inject current time/date/open-closed status into AI context. Needs `TIMEZONE` env var (default: `Asia/Jakarta`). Uses `Intl.DateTimeFormat` with `formatToParts()`.
+- **Rate limiting**: Keyed by auth token (not IP) to work behind Cloudflare/nginx. Togglable via `RATE_LIMIT_ENABLED` env var. All rate limiters have conditional passthrough wrappers.

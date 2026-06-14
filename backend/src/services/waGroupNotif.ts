@@ -5,6 +5,7 @@ import { logger } from "../utils/logger.js";
 
 function timestamp(): string {
   return new Date().toLocaleString("id-ID", {
+    timeZone: config.timezone,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -34,19 +35,19 @@ export async function notifyNewCustomer(name: string, waNumber: string): Promise
 }
 
 export async function notifyEscalation(name: string, waNumber: string, convId: string): Promise<void> {
-  const url = `${config.frontendUrl}/cs?tab=all&chatId=${convId}`;
+  const url = `${config.frontendUrl}/cs/${convId}?tab=all`;
   const msg = `[${timestamp()}] ⏳ *Request CS*\n👤 Nama: ${name}\n📱 No: ${fmtPhone(waNumber)}\n🔗 ${url}`;
   await sendWaGroupNotif(msg);
 }
 
 export async function notifyClaim(customerName: string, csName: string, convId: string): Promise<void> {
-  const url = `${config.frontendUrl}/cs?tab=all&chatId=${convId}`;
+  const url = `${config.frontendUrl}/cs/${convId}?tab=all`;
   const msg = `[${timestamp()}] ✅ *Chat Diklaim*\n👤 Pelanggan: ${customerName}\n🧑‍💼 CS: ${csName}\n🔗 ${url}`;
   await sendWaGroupNotif(msg);
 }
 
 export async function notifyResolve(customerName: string, csName: string, rating: number | null | undefined, convId: string): Promise<void> {
-  const url = `${config.frontendUrl}/cs?tab=all&chatId=${convId}`;
+  const url = `${config.frontendUrl}/cs/${convId}?tab=all`;
   const ratingStr = rating ? `⭐ ${rating}/5` : "⭐ Belum di-rating";
   const msg = `[${timestamp()}] ✅ *Chat Diselesaikan*\n👤 Pelanggan: ${customerName}\n🧑‍💼 CS: ${csName}\n${ratingStr}\n🔗 ${url}`;
   await sendWaGroupNotif(msg);

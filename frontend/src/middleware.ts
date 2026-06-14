@@ -21,9 +21,6 @@ export function middleware(request: NextRequest) {
   const isLogin = pathname === "/login" || pathname === "/login/";
 
   if (isLogin) {
-    if (token && decodeJwt(token)?.role) {
-      return NextResponse.redirect(new URL("/admin?tab=dashboard", request.url));
-    }
     return NextResponse.next();
   }
 
@@ -37,13 +34,14 @@ export function middleware(request: NextRequest) {
 
   const payload = decodeJwt(token);
   if (payload?.role === "cs" && pathname.startsWith("/admin")) {
-    return NextResponse.redirect(new URL("/cs?tab=all", request.url));
+    return NextResponse.redirect(new URL("/cs?tab=mine", request.url));
   }
 
   if (pathname.startsWith("/cs")) {
-    const chatId = request.nextUrl.searchParams.get("chatId");
+    const segments = pathname.split("/").filter(Boolean);
+    const chatId = segments[1];
     if (chatId && !UUID_REGEX.test(chatId)) {
-      const tab = searchParams.get("tab") || "all";
+      const tab = searchParams.get("tab") || "mine";
       return NextResponse.redirect(new URL(`/cs?tab=${tab}`, request.url));
     }
   }

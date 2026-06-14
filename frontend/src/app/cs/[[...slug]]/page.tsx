@@ -3,14 +3,13 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, useParams } from "next/navigation";
 import DashboardShell from "@/components/DashboardShell";
 import ConversationList from "@/components/ConversationList";
 import ChatWindow from "@/components/ChatWindow";
-import Modal from "@/components/Modal";
 import { useAuth } from "@/hooks/useAuth";
 import { setupPushNotifications, showBrowserNotification } from "@/lib/push";
-import { connect, getIO } from "@/lib/socket";
+import { connect } from "@/lib/socket";
 import { apiFetch } from "@/lib/api";
 import { playBeep } from "@/lib/utils";
 import { Bell } from "lucide-react";
@@ -36,29 +35,29 @@ export default function CSPage() {
         <DashboardShell>
           <div className="flex items-center justify-center h-full">
             <div className="flex items-center gap-3 text-slate-500">
-              <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
-              <span className="text-sm">Memuat...</span>
+              <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+              <span className="text-sm font-medium">Memuat...</span>
             </div>
           </div>
         </DashboardShell>
       }
     >
-      <CSContent />
+      <CSContent params={useParams() as { slug?: string[] }} />
     </Suspense>
   );
 }
 
-function CSContent() {
+function CSContent({ params }: { params: { slug?: string[] } }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useAuth();
 
   const tabParam = searchParams.get("tab") as TabType | null;
-  const chatIdParam = searchParams.get("chatId");
+  const chatIdFromPath = params.slug?.[0] || null;
 
-  const [activeTab, setActiveTab] = useState<TabType>(tabParam || "all");
+  const [activeTab, setActiveTab] = useState<TabType>(tabParam || "mine");
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(chatIdParam);
+  const [selectedId, setSelectedId] = useState<string | null>(chatIdFromPath);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -70,12 +69,13 @@ function CSContent() {
       ? localStorage.getItem("sound_enabled") !== "false"
       : true
   );
+  const [search, setSearch] = useState("");
   const [newChatPopup, setNewChatPopup] = useState<{
     conv: Conversation;
     visible: boolean;
   } | null>(null);
-  
   const popupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(false);
   const activeTabRef = useRef<TabType>(activeTab);
   const selectedIdRef = useRef<string | null>(selectedId);
   const userRef = useRef(user);
@@ -97,6 +97,12 @@ function CSContent() {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
+  useEffect(() => {
+    if (chatIdFromPath !== selectedId) {
+      setSelectedId(chatIdFromPath);
+    }
+  }, [chatIdFromPath]);
+
   const fetchConversations = useCallback(
     async (tab: TabType, reset = true) => {
       if (reset) setLoading(true);
@@ -108,6 +114,7 @@ function CSContent() {
 
       try {
         const res = await apiFetch(url);
+        if (!res.ok) throw new Error("Failed to fetch conversations");
         const data = await res.json();
 
         if (reset) {
@@ -140,6 +147,11 @@ function CSContent() {
   }, [tabParam]);
 
   useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      fetchConversations(activeTab, true);
+      return;
+    }
     setSelectedId(null);
     setSelectedConv(null);
     setCursor(null);
@@ -162,8 +174,6 @@ function CSContent() {
 
       setConversations((prev) => {
         if (prev.some((c) => c.id === conv.id)) return prev;
-        
-        // Add to list if we are in 'all' or 'waiting'
         if (currentTab === "all" || currentTab === "waiting") {
           return [conv, ...prev];
         }
@@ -184,53 +194,65 @@ function CSContent() {
       }, 6000);
     });
 
-    socket.on("conversation:claimed", (data: { conversationId: string; claimedBy: string; status: string }) => {
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === data.conversationId
-            ? { ...c, status: "active" as const, claimed_by: data.claimedBy }
-            : c
-        )
-      );
-      
-      const currentSelectedId = selectedIdRef.current;
-      if (currentSelectedId === data.conversationId) {
-        setSelectedConv((prev) =>
-          prev ? { ...prev, status: "active", claimed_by: data.claimedBy } : null
-        );
-      }
-    });
-
     socket.on(
-      "conversation:status",
-      (data: { conversationId: string; status: Conversation["status"]; claimedBy?: string }) => {
-        setConversations((prev) => {
-          if (prev.some((c) => c.id === data.conversationId)) {
-            return prev.map((c) => (c.id === data.conversationId ? { ...c, status: data.status, ...(data.claimedBy ? { claimed_by: data.claimedBy } : {}) } : c));
-          }
-          return prev;
-        });
-        
-        // Fetch if missing (e.g., claimed by us or transferred)
-        apiFetch("/api/conversations/" + data.conversationId)
-          .then(r => { if (!r.ok) throw new Error("not found"); return r.json(); })
-          .then(resData => {
-            const conv = resData.conversation || resData;
-            if (!conv || !conv.id) return;
-            setConversations(prev => {
-              if (prev.some(c => c.id === conv.id)) return prev;
-              const tab = activeTabRef.current;
-              if (tab === "all" || (tab === "mine" && conv.claimed_by === user?.id)) {
-                return [conv, ...prev];
-              }
-              return prev;
-            });
-          }).catch(() => {});
-        
+      "conversation:claimed",
+      (data: { conversationId: string; claimedBy: string; status: string }) => {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === data.conversationId
+              ? { ...c, status: "active" as const, claimed_by: data.claimedBy }
+              : c
+          )
+        );
+
         const currentSelectedId = selectedIdRef.current;
         if (currentSelectedId === data.conversationId) {
           setSelectedConv((prev) =>
-            prev ? { ...prev, status: data.status, ...(data.claimedBy ? { claimed_by: data.claimedBy } : {}) } : null
+            prev
+              ? { ...prev, status: "active", claimed_by: data.claimedBy }
+              : null
+          );
+        }
+      }
+    );
+
+    socket.on(
+      "conversation:status",
+      (data: {
+        conversationId: string;
+        status: Conversation["status"];
+        claimedBy?: string;
+      }) => {
+        setConversations((prev) => {
+          if (prev.some((c) => c.id === data.conversationId)) {
+            return prev.map((c) =>
+              c.id === data.conversationId
+                ? {
+                    ...c,
+                    status: data.status,
+                    ...(data.claimedBy
+                      ? { claimed_by: data.claimedBy }
+                      : {}),
+                  }
+                : c
+            );
+          }
+          return prev;
+        });
+
+        const currentSelectedId = selectedIdRef.current;
+
+        if (currentSelectedId === data.conversationId) {
+          setSelectedConv((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: data.status,
+                  ...(data.claimedBy
+                    ? { claimed_by: data.claimedBy }
+                    : {}),
+                }
+              : null
           );
         }
       }
@@ -239,72 +261,64 @@ function CSContent() {
     socket.on("conversation:message", (data: any) => {
       const msg = data.message || data;
       const currentSelectedId = selectedIdRef.current;
-      
+
       const playNotify = (c: Conversation) => {
         if (msg.sender === "cs") return;
-        if (c.status === "active" && c.claimed_by !== userRef.current?.id) return;
         if (c.status === "bot" || c.status === "resolved") return;
-        
-        const soundOn = localStorage.getItem("sound_enabled") !== "false";
+
+        const soundOn =
+          localStorage.getItem("sound_enabled") !== "false";
         if (soundOn) {
-          try { playBeep(); } catch {}
+          try {
+            playBeep();
+          } catch {}
         }
-        
+
         const isHidden = document.visibilityState === "hidden";
         if (currentSelectedId !== msg.conversation_id || isHidden) {
-           showBrowserNotification(
-             "Pesan Baru Masuk", 
-             msg.content_type === "text" ? msg.content : "[Media diterima]",
-             { url: "/cs?tab=all&chatId=" + msg.conversation_id }
-           );
+          showBrowserNotification("Pesan Baru Masuk", msg.content_type === "text" ? msg.content : "[Media diterima]", {
+            url: "/cs/" + msg.conversation_id + "?tab=all",
+          });
         }
       };
 
-      const existingConv = conversationsRef.current.find(c => c.id === msg.conversation_id);
+      const existingConv = conversationsRef.current.find(
+        (c) => c.id === msg.conversation_id
+      );
       if (existingConv) {
-         playNotify(existingConv);
+        playNotify(existingConv);
       }
 
       setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.id === msg.conversation_id);
+        const idx = prev.findIndex(
+          (c) => c.id === msg.conversation_id
+        );
         if (idx !== -1) {
           const conv = prev[idx];
-          const isCurrentlyOpen = currentSelectedId === conv.id;
+          const isCurrentlyOpen =
+            currentSelectedId === conv.id;
           const updatedConv = {
             ...conv,
-            last_message: msg.content_type === "text" ? msg.content : (msg.content_type ? `[${msg.content_type}]` : "Media"),
-            updated_at: msg.created_at || new Date().toISOString(),
-            unread: (!isCurrentlyOpen && msg.sender !== "cs") ? (conv.unread || 0) + 1 : conv.unread
+            last_message:
+              msg.content_type === "text"
+                ? msg.content
+                : msg.content_type
+                ? `[${msg.content_type}]`
+                : "Media",
+            updated_at:
+              msg.created_at || new Date().toISOString(),
+            unread:
+              !isCurrentlyOpen && msg.sender !== "cs"
+                ? (conv.unread || 0) + 1
+                : conv.unread,
           };
-          
+
           const newArr = [...prev];
-          newArr.splice(idx, 1);
-          newArr.unshift(updatedConv); // Move to top
+          newArr[idx] = updatedConv;
           return newArr;
         }
         return prev;
       });
-
-      // If missing from list, fetch it and add it
-      if (!existingConv) {
-        apiFetch("/api/conversations/" + msg.conversation_id)
-          .then(r => { if (!r.ok) throw new Error("not found"); return r.json(); })
-          .then(data => {
-            const conv = data.conversation || data;
-            if (!conv || !conv.id) return;
-            
-            playNotify(conv);
-            
-            setConversations(prev => {
-              if (prev.some(c => c.id === conv.id)) return prev;
-              const tab = activeTabRef.current;
-              if (tab === "all" || (tab === "waiting" && conv.status === "waiting")) {
-                 return [conv, ...prev];
-              }
-              return prev;
-          });
-        }).catch(() => {});
-      }
     });
 
     return () => {
@@ -322,11 +336,14 @@ function CSContent() {
       return;
     }
 
+    const existing = conversations.find((c) => c.id === selectedId);
+    if (existing && existing.status) {
+      setSelectedConv(existing);
+    }
+
     apiFetch("/api/conversations/" + selectedId)
       .then((res) => {
         if (!res.ok) {
-          setSelectedConv(null);
-          updateUrl(activeTab, null);
           return;
         }
         return res.json();
@@ -334,25 +351,43 @@ function CSContent() {
       .then((data) => {
         if (!data) return;
         setSelectedConv(data.conversation || data);
-        setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, unread: 0 } : c));
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selectedId ? { ...c, unread: 0 } : c
+          )
+        );
       })
-      .catch(() => {
-        setSelectedConv(null);
-        updateUrl(activeTab, null);
-      });
+      .catch(() => {});
   }, [selectedId]);
 
   const updateUrl = (tab: TabType, chatId?: string | null) => {
-    const params = new URLSearchParams();
-    params.set("tab", tab);
-    if (chatId) params.set("chatId", chatId);
-    router.replace("/cs?" + params.toString(), { scroll: false });
+    if (chatId) {
+      router.replace("/cs/" + chatId + "?tab=" + tab, { scroll: false });
+    } else {
+      router.replace("/cs?tab=" + tab, { scroll: false });
+    }
+  };
+
+  const updateUrlSilent = (tab: TabType, chatId?: string | null) => {
+    try {
+      if (chatId) {
+        window.history.replaceState(
+          null,
+          "",
+          "/cs/" + chatId + "?tab=" + tab
+        );
+      } else {
+        window.history.replaceState(null, "", "/cs?tab=" + tab);
+      }
+    } catch {}
   };
 
   const handleSelect = (conv: Conversation) => {
     setSelectedId(conv.id);
     setSelectedConv(conv);
-    updateUrl(activeTab, conv.id);
+    try {
+      window.history.replaceState(null, "", `/cs/${conv.id}?tab=${activeTab}`);
+    } catch {}
   };
 
   const handleLoadMore = () => {
@@ -364,28 +399,65 @@ function CSContent() {
   const handleClaimFromPopup = async (conv: Conversation) => {
     setNewChatPopup(null);
     try {
-      await apiFetch("/api/conversations/" + conv.id + "/claim", {
-        method: "POST",
-      });
+      const res = await apiFetch(
+        "/api/conversations/" + conv.id + "/claim",
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        return;
+      }
       setSelectedId(conv.id);
-      setSelectedConv({ ...conv, status: "active", claimed_by: user?.id || null });
-      updateUrl(activeTab, conv.id);
-      
+      setSelectedConv({
+        ...conv,
+        status: "active",
+        claimed_by: user?.id || null,
+      });
+      try {
+        window.history.replaceState(null, "", `/cs/${conv.id}?tab=${activeTab}`);
+      } catch {}
+
       setConversations((prev) => {
         if (prev.some((c) => c.id === conv.id)) {
-          return prev.map(c => c.id === conv.id ? { ...c, status: "active", claimed_by: user?.id || null } : c);
+          return prev.map((c) =>
+            c.id === conv.id
+              ? {
+                  ...c,
+                  status: "active" as const,
+                  claimed_by: user?.id || null,
+                }
+              : c
+          );
         }
-        return [{ ...conv, status: "active", claimed_by: user?.id || null }, ...prev];
+        return [
+          {
+            ...conv,
+            status: "active" as const,
+            claimed_by: user?.id || null,
+          },
+          ...prev,
+        ];
       });
-    } catch {
-      // ignore
-    }
+    } catch {}
+  };
+
+  const handleTabChange = (tab: TabType) => {
+    setSearch("");
+    setActiveTab(tab);
+    try {
+      window.history.replaceState(null, "", `/cs?tab=${tab}`);
+    } catch {}
   };
 
   return (
     <DashboardShell>
       <div className="flex-1 flex min-h-0 bg-[#0A0F1C]">
-        <div className={"shrink-0 " + (selectedId ? "hidden md:block" : "block") + " w-full md:w-80"}>
+        <div
+          className={
+            "shrink-0 " +
+            (selectedId ? "hidden md:block" : "block") +
+            " w-full md:w-80"
+          }
+        >
           <ConversationList
             conversations={conversations}
             selectedId={selectedId}
@@ -393,29 +465,39 @@ function CSContent() {
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
             loading={loading}
+            search={search}
+            onSearchChange={setSearch}
             activeTab={activeTab}
-            onTabChange={(tab) => updateUrl(tab, selectedId)}
+            onTabChange={handleTabChange}
           />
         </div>
 
-        <div className={selectedId ? "flex-1 flex flex-col min-w-0 min-h-0" : "hidden md:flex flex-1 flex-col min-w-0 min-h-0"}>
+        <div
+          className={
+            selectedId
+              ? "flex-1 flex flex-col min-w-0 min-h-0"
+              : "hidden md:flex flex-1 flex-col min-w-0 min-h-0"
+          }
+        >
           <ChatWindow
             conversation={selectedConv}
             soundEnabled={soundEnabled}
             onBack={() => {
               setSelectedId(null);
               setSelectedConv(null);
-              updateUrl(activeTab, null);
+              try {
+                window.history.replaceState(null, "", `/cs?tab=${activeTab}`);
+              } catch {}
             }}
           />
         </div>
       </div>
 
       {newChatPopup && newChatPopup.visible && (
-        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-6">
-          <div className="bg-[#0B1221] border border-emerald-500/30 rounded-2xl p-4 shadow-2xl shadow-emerald-500/10 max-w-sm flex flex-col">
+        <div className="fixed bottom-6 right-6 z-50 animate-bubble-in">
+          <div className="bg-[#0B1221]/95 backdrop-blur-lg border border-emerald-500/30 rounded-2xl p-4 shadow-2xl shadow-emerald-500/10 max-w-sm flex flex-col">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400/20 to-emerald-600/20 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-inner">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400/20 to-emerald-600/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
                 <Bell size={20} className="text-emerald-400" />
               </div>
               <div className="flex-1 min-w-0">
@@ -429,13 +511,13 @@ function CSContent() {
                 <div className="flex items-center gap-2 mt-3">
                   <button
                     onClick={() => handleClaimFromPopup(newChatPopup.conv)}
-                    className="flex-1 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all"
+                    className="flex-1 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all cursor-pointer"
                   >
                     Claim Chat
                   </button>
                   <button
                     onClick={() => setNewChatPopup(null)}
-                    className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+                    className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer"
                   >
                     Tutup
                   </button>
@@ -445,6 +527,7 @@ function CSContent() {
           </div>
         </div>
       )}
+
     </DashboardShell>
   );
 }

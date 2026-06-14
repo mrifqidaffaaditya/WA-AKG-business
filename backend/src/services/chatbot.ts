@@ -18,6 +18,71 @@ function getClient(): OpenAI {
   return client;
 }
 
+const DAY_MAP: Record<string, number> = {
+  minggu: 0, senin: 1, selasa: 2, rabu: 3, kamis: 4, jumat: 5, sabtu: 6,
+};
+
+function parseBusinessHours(
+  businessInfo: string
+): string {
+  const now = new Date();
+  const tz = config.timezone;
+
+  const formatter = new Intl.DateTimeFormat("id-ID", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    weekday: "long",
+  });
+  const parts = formatter.formatToParts(now);
+  const weekday = parts.find((p) => p.type === "weekday")?.value || "";
+  const hours = parts.find((p) => p.type === "hour")?.value || "00";
+  const minutes = parts.find((p) => p.type === "minute")?.value || "00";
+  const currentMinutes = parseInt(hours, 10) * 60 + parseInt(minutes, 10);
+  const currentDayIdx = DAY_MAP[weekday.toLowerCase()] ?? -1;
+
+  const timeStr = `${hours}:${minutes}`;
+  let isOpen = false;
+  let closingTime = "";
+
+  const blockRegex = /(senin|selasa|rabu|kamis|jumat|sabtu|minggu)(?:-(senin|selasa|rabu|kamis|jumat|sabtu|minggu))?\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2})/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = blockRegex.exec(businessInfo)) !== null) {
+    const startDay = DAY_MAP[match[1].toLowerCase()];
+    const endDay = match[2] ? DAY_MAP[match[2].toLowerCase()] : startDay;
+    const openTime = match[3];
+    const closeTime = match[4];
+
+    const [openH, openM] = openTime.split(":").map(Number);
+    const [closeH, closeM] = closeTime.split(":").map(Number);
+    const openMinutes = openH * 60 + openM;
+    const closeMinutes = closeH * 60 + closeM;
+
+    let dayInRange = false;
+    if (startDay <= endDay) {
+      dayInRange = currentDayIdx >= startDay && currentDayIdx <= endDay;
+    } else {
+      dayInRange = currentDayIdx >= startDay || currentDayIdx <= endDay;
+    }
+
+    if (dayInRange) {
+      closingTime = closeTime;
+      if (currentMinutes >= openMinutes && currentMinutes < closeMinutes) {
+        isOpen = true;
+      }
+    }
+  }
+
+  let statusMsg = `Waktu sekarang: ${weekday}, ${timeStr} WIB. Status toko: ${isOpen ? "BUKA" : "TUTUP"}`;
+  if (isOpen && closingTime) {
+    statusMsg += ` (tutup jam ${closingTime})`;
+  }
+
+  return statusMsg;
+}
+
 async function getBotConfig(): Promise<{
   personaName: string;
   systemPrompt: string;
@@ -97,10 +162,13 @@ Total Sesi Sebelumnya: ${customer.total_sessions}`;
     }
   }
 
+  const realtimeStatus = parseBusinessHours(botConfig.businessInfo);
+
   const systemPrompt = `${botConfig.systemPrompt}
 
 [INFORMASI BISNIS]
 ${botConfig.businessInfo}
+${realtimeStatus}
 ${stockContext}
 ${returningContext ? `\n[RIWAYAT PERCAKAPAN SEBELUMNYA (HANYA REFERENSI)]\n${returningContext}\n` : ""}
 [HAL PENTING]

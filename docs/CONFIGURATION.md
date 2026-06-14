@@ -95,6 +95,18 @@ Alternative stock source using MySQL or PostgreSQL.
 | `GSHEET_COL_QTY` | `B` | Column letter for stock quantity |
 | `GSHEET_COL_PRICE` | `C` | Column letter for price |
 
+### Rate Limiting
+
+| Variable | Default | Description |
+|---|---|---|
+| `RATE_LIMIT_ENABLED` | `true` | Enable/disable rate limiting globally. Set to `false` to disable all rate limits. Rate limits are now keyed by auth token (not IP) to work behind proxies. |
+
+### Timezone
+
+| Variable | Default | Description |
+|---|---|---|
+| `TIMEZONE` | `Asia/Jakarta` | IANA timezone for real-time business hours detection (e.g., `Asia/Makassar`, `Asia/Jayapura`). Used by chatbot to determine whether the store is currently open or closed. |
+
 ### Behavior Settings
 
 | Variable | Default | Description |

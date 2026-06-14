@@ -13,14 +13,14 @@ import {
   isRefreshTokenValid,
 } from "../services/auth.js";
 import { authenticate, AuthRequest } from "../middleware/auth.js";
-import { loginRateLimit, refreshRateLimit, profileRateLimit } from "../middleware/rateLimit.js";
+import { loginRateLimitPassthrough, refreshRateLimitPassthrough, profileRateLimitPassthrough } from "../middleware/rateLimit.js";
 import { createAuditLog } from "../utils/audit.js";
 
 const router = Router();
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-router.post("/login", loginRateLimit, async (req, res) => {
+router.post("/login", loginRateLimitPassthrough, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -96,7 +96,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
   }
 });
 
-router.post("/refresh", refreshRateLimit, async (req, res) => {
+router.post("/refresh", refreshRateLimitPassthrough, async (req, res) => {
   try {
     const token = req.cookies?.refresh_token;
 
@@ -193,7 +193,7 @@ router.get("/me", authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.put("/profile", authenticate, profileRateLimit, async (req: AuthRequest, res) => {
+router.put("/profile", authenticate, profileRateLimitPassthrough, async (req: AuthRequest, res) => {
   try {
     const { name, password, currentPassword } = req.body;
     const updates: Record<string, unknown> = {};

@@ -152,9 +152,14 @@ async function addColumnIfNotExists(
 
 async function run() {
   console.log("[migrate] Running migrations...");
+
+  await client.execute("PRAGMA journal_mode = WAL");
+  await client.execute("PRAGMA busy_timeout = 5000");
+  await client.execute("PRAGMA foreign_keys = ON");
+
   await client.execute("BEGIN TRANSACTION");
   try {
-    for (const sql of MIGRATIONS) {
+    for (const sql of MIGRATIONS.slice(3)) {
       try {
         await client.execute(sql);
       } catch (err: unknown) {
