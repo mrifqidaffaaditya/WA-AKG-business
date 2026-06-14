@@ -133,3 +133,21 @@ export const refreshTokens = sqliteTable("refresh_tokens", {
   created_at: text("created_at").notNull(),
   revoked: integer("revoked", { mode: "boolean" }).notNull().default(false),
 });
+
+export const csConfig = sqliteTable("cs_config", {
+  id: text("id").primaryKey(),
+  signature_enabled: integer("signature_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  signature_template: text("signature_template").notNull().default(" - {name}"),
+  quick_replies: text("quick_replies").notNull(),
+  auto_reply_claim_enabled: integer("auto_reply_claim_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  auto_reply_claim: text("auto_reply_claim").notNull(),
+  auto_reply_resolve_enabled: integer("auto_reply_resolve_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  auto_reply_resolve: text("auto_reply_resolve").notNull(),
+  updated_at: text("updated_at").notNull(),
+});

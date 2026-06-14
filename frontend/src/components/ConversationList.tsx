@@ -79,12 +79,6 @@ export default function ConversationList({
         {activeTab && onTabChange && (
           <div className="px-4 flex items-center gap-1">
             <button
-              onClick={() => onTabChange("all")}
-              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === "all" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-300"}`}
-            >
-              Semua
-            </button>
-            <button
               onClick={() => onTabChange("mine")}
               className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === "mine" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-300"}`}
             >
@@ -95,6 +89,12 @@ export default function ConversationList({
               className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === "waiting" ? "bg-emerald-500/15 text-emerald-400 relative" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-300"}`}
             >
               Antrean
+            </button>
+            <button
+              onClick={() => onTabChange("all")}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === "all" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-300"}`}
+            >
+              Semua
             </button>
           </div>
         )}

@@ -5,6 +5,11 @@ import { verifyAccessToken } from "../services/auth.js";
 import { logger } from "../utils/logger.js";
 
 let io: Server | null = null;
+const activeUsers = new Map<string, Set<string>>();
+
+export function getActiveUserIds(): string[] {
+  return Array.from(activeUsers.keys());
+}
 
 export function initWebSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
@@ -31,6 +36,13 @@ export function initWebSocket(httpServer: HttpServer): Server {
       socket.join(`user:${userData.sub}`);
       socket.join(`role:${userData.role}`);
       logger.info(`[ws] Auth: ${userData.sub} (${userData.role})`);
+
+      // Track online status
+      if (!activeUsers.has(userData.sub)) {
+        activeUsers.set(userData.sub, new Set());
+      }
+      activeUsers.get(userData.sub)!.add(socket.id);
+      broadcast("user:status", { userId: userData.sub, status: "online" });
     } catch {
       socket.disconnect(true);
       return;
@@ -38,6 +50,17 @@ export function initWebSocket(httpServer: HttpServer): Server {
 
     socket.on("disconnect", () => {
       logger.info(`[ws] Disconnected: ${socket.id}`);
+      const user = (socket as any).user;
+      if (user) {
+        const sockets = activeUsers.get(user.sub);
+        if (sockets) {
+          sockets.delete(socket.id);
+          if (sockets.size === 0) {
+            activeUsers.delete(user.sub);
+            broadcast("user:status", { userId: user.sub, status: "offline" });
+          }
+        }
+      }
     });
   });
 

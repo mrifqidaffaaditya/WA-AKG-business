@@ -73,8 +73,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         { label: "Pengaturan CS", icon: Headset, tab: "cs_config" },
       ]
     : [
-        { label: "Waiting", icon: MessageCircle, tab: "waiting" },
         { label: "My Chats", icon: Users, tab: "mine" },
+        { label: "Waiting", icon: MessageCircle, tab: "waiting" },
         { label: "All", icon: ClipboardList, tab: "all" },
       ];
 

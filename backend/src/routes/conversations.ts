@@ -19,6 +19,8 @@ import { sendNotificationToUser } from "../services/notifications.js";
 import { getCsConfig } from "../services/csConfig.js";
 import { db, schema } from "../db/index.js";
 import { eq } from "drizzle-orm";
+import { writeFileSync, existsSync, mkdirSync } from "fs";
+import { join } from "path";
 
 const router = Router();
 
@@ -26,7 +28,7 @@ router.use(authenticate);
 
 router.get("/cs-config", async (_req, res) => {
   try {
-    const config = getCsConfig();
+    const config = await getCsConfig();
     res.json(config);
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -90,7 +92,7 @@ router.get("/:id/messages", async (req, res) => {
 
 router.post("/:id/messages", async (req, res) => {
   try {
-    const { content, contentType, mediaUrl } = req.body;
+    const { content, contentType, mediaUrl, fileData, fileName } = req.body;
     const conv = await getConversation(req.params.id);
     if (!conv) return res.status(404).json({ error: "Conversation not found" });
     if (conv.status === "resolved") return res.status(400).json({ error: "Conversation is resolved" });
@@ -103,10 +105,39 @@ router.post("/:id/messages", async (req, res) => {
     const csUser = csUserRows[0];
     
     let finalContent = content;
-    const csConfig = getCsConfig();
+    const csConfig = await getCsConfig();
     if (csConfig.signatureEnabled && csConfig.signatureTemplate && csUser && finalContent) {
       const footer = csConfig.signatureTemplate.replace("{name}", csUser.name);
       finalContent = `${finalContent}\n\n${footer}`;
+    }
+
+    let savedMediaUrl = mediaUrl;
+    let localFilePath = null;
+
+    if (fileData) {
+      let base64Content = fileData;
+      if (fileData.startsWith("data:")) {
+        const parts = fileData.split(";base64,");
+        base64Content = parts[1];
+      }
+      
+      const buffer = Buffer.from(base64Content, "base64");
+      
+      // Clean up filename to prevent directory traversal
+      const ext = fileName ? fileName.split(".").pop() : "bin";
+      const cleanedFileName = fileName ? fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_") : `file_${Date.now()}`;
+      const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${cleanedFileName}`;
+      
+      const uploadDir = join(process.cwd(), "public", "uploads");
+      if (!existsSync(uploadDir)) {
+        mkdirSync(uploadDir, { recursive: true });
+      }
+      
+      const filePath = join(uploadDir, uniqueName);
+      writeFileSync(filePath, buffer);
+      
+      savedMediaUrl = `/uploads/${uniqueName}`;
+      localFilePath = filePath;
     }
 
     const msg = await addMessage({
@@ -115,17 +146,34 @@ router.post("/:id/messages", async (req, res) => {
       csId: req.user!.sub,
       content: finalContent,
       contentType: contentType || "text",
-      mediaUrl: mediaUrl,
+      mediaUrl: savedMediaUrl,
+      fileName: fileName,
     });
 
     try {
-      const waContent: any = { text: finalContent };
-      if (contentType === "image" && mediaUrl) {
-        waContent.image = { url: mediaUrl };
-        waContent.caption = content;
-      } else if (contentType === "document" && mediaUrl) {
-        waContent.document = { url: mediaUrl };
-        waContent.caption = content;
+      const waContent: any = {};
+      let mediaPath = localFilePath;
+      if (!mediaPath && savedMediaUrl && savedMediaUrl.startsWith("/uploads/")) {
+        const filename = savedMediaUrl.substring("/uploads/".length);
+        mediaPath = join(process.cwd(), "public", "uploads", filename);
+      }
+
+      if (contentType === "image" && savedMediaUrl) {
+        waContent.image = { url: mediaPath || savedMediaUrl };
+        if (finalContent) waContent.caption = finalContent;
+      } else if (contentType === "video" && savedMediaUrl) {
+        waContent.video = { url: mediaPath || savedMediaUrl };
+        if (finalContent) waContent.caption = finalContent;
+      } else if (contentType === "document" && savedMediaUrl) {
+        waContent.document = { url: mediaPath || savedMediaUrl };
+        if (finalContent) waContent.caption = finalContent;
+        if (fileName) {
+          waContent.fileName = fileName;
+        } else {
+          waContent.fileName = savedMediaUrl.split("/").pop();
+        }
+      } else {
+        waContent.text = finalContent;
       }
       await sendWaMessage(conv.wa_number, waContent);
     } catch (waErr) {
@@ -165,7 +213,7 @@ router.post("/:id/claim", async (req, res) => {
     // Send Auto Reply Claim
     const csUserRows = await db.select().from(schema.users).where(eq(schema.users.id, req.user!.sub)).limit(1);
     const csUser = csUserRows[0];
-    const csConfig = getCsConfig();
+    const csConfig = await getCsConfig();
     
     if (csConfig.autoReplyClaimEnabled && csConfig.autoReplyClaim) {
       const claimMessage = csConfig.autoReplyClaim.replace("{name}", csUser?.name || "CS");
@@ -237,7 +285,7 @@ router.post("/:id/resolve", async (req: AuthRequest, res) => {
     // Send Auto Reply Resolve
     const csUserRows = await db.select().from(schema.users).where(eq(schema.users.id, req.user!.sub)).limit(1);
     const csUser = csUserRows[0];
-    const csConfig = getCsConfig();
+    const csConfig = await getCsConfig();
     
     if (csConfig.autoReplyResolveEnabled && csConfig.autoReplyResolve) {
       const resolveMessage = csConfig.autoReplyResolve.replace("{name}", csUser?.name || "CS");

@@ -134,7 +134,8 @@ export async function sendWaMessage(
   content: AnyMessageContent
 ): Promise<proto.WebMessageInfo | null> {
   if (!sock) return null;
-  return sock.sendMessage(jid, content);
+  const targetJid = jid.includes("@") ? jid : getJid(jid);
+  return sock.sendMessage(targetJid, content);
 }
 
 export async function downloadWaMedia(

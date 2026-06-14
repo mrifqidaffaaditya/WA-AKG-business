@@ -821,6 +821,7 @@ interface User {
   email: string;
   role: "super_admin" | "admin" | "cs";
   is_active: boolean;
+  is_online?: boolean;
   created_at: string;
 }
 
@@ -1066,13 +1067,14 @@ function UserPanel() {
                 <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Email</th>
                 <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
                 <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Koneksi</th>
                 <th className="px-4 py-3.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center">
+                  <td colSpan={6} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <Users size={24} className="text-slate-700" />
                       <p className="text-sm text-slate-500">Belum ada user</p>
@@ -1095,6 +1097,12 @@ function UserPanel() {
                     <span className={"inline-flex items-center gap-1.5 text-xs " + (u.is_active ? "text-emerald-400" : "text-slate-500")}>
                       <span className={"w-1.5 h-1.5 rounded-full " + (u.is_active ? "bg-emerald-400" : "bg-slate-600")} />
                       {u.is_active ? "Aktif" : "Nonaktif"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <span className={"inline-flex items-center gap-1.5 text-xs " + (u.is_online ? "text-emerald-400 font-medium" : "text-slate-500")}>
+                      <span className={"w-1.5 h-1.5 rounded-full " + (u.is_online ? "bg-emerald-400 animate-pulse" : "bg-slate-600")} />
+                      {u.is_online ? "Online" : "Offline"}
                     </span>
                   </td>
                   <td className="px-4 py-3.5">

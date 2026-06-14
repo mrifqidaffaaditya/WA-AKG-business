@@ -26,7 +26,9 @@ interface Message {
   cs_id: string | null;
   cs_name?: string | null;
   content: string;
-  content_type?: "text" | "image" | "document" | "audio";
+  content_type?: "text" | "image" | "video" | "document" | "audio";
+  media_url?: string | null;
+  file_name?: string | null;
   created_at: string;
 }
 
@@ -217,7 +219,40 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   const sendMessage = async () => {
     if (!conversation || (!input.trim() && !file)) return;
 
-    const body: Record<string, unknown> = { content: input.trim(), contentType: "text" };
+    let contentType = "text";
+    let fileData: string | null = null;
+    let fileName: string | null = null;
+
+    if (file) {
+      if (file.type.startsWith("image/")) {
+        contentType = "image";
+      } else if (file.type.startsWith("video/")) {
+        contentType = "video";
+      } else {
+        contentType = "document";
+      }
+      
+      fileName = file.name;
+      
+      try {
+        fileData = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+        });
+      } catch (err) {
+        setModal({ isOpen: true, title: "Error", message: "Gagal memproses file", type: "error" });
+        return;
+      }
+    }
+
+    const body: Record<string, unknown> = { 
+      content: input.trim(), 
+      contentType,
+      ...(fileData && { fileData, fileName })
+    };
+
     setInput("");
     setFile(null);
     setFilePreview(null);
@@ -508,7 +543,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                     {msg.content_type === "image" && (
                       <div className="mb-2 overflow-hidden rounded-xl border border-white/10">
                         <img
-                          src={msg.content}
+                          src={msg.media_url || msg.content}
                           alt="Gambar"
                           className="max-w-full max-h-[300px] object-cover transition-transform hover:scale-105"
                           loading="lazy"
@@ -516,9 +551,19 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                       </div>
                     )}
 
+                    {msg.content_type === "video" && (
+                      <div className="mb-2 overflow-hidden rounded-xl border border-white/10">
+                        <video
+                          src={msg.media_url || msg.content}
+                          controls
+                          className="max-w-full max-h-[300px] object-cover"
+                        />
+                      </div>
+                    )}
+
                     {msg.content_type === "document" && (
                       <a
-                        href={msg.content}
+                        href={msg.media_url || msg.content}
                         target="_blank"
                         rel="noopener noreferrer"
                         className={"flex items-center gap-3 p-3 rounded-xl mb-2 transition-colors " + 
@@ -529,7 +574,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                           <FileIcon size={16} />
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-medium truncate">Dokumen</span>
+                          <span className="text-sm font-medium truncate">{msg.file_name || "Dokumen"}</span>
                           <span className={"text-[10px] " + (isMine ? "text-emerald-200" : "text-slate-400")}>Klik untuk mengunduh</span>
                         </div>
                       </a>
@@ -571,7 +616,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
 
       {/* Quick Replies */}
       {conversation?.status === "active" && quickReplies.length > 0 && (
-        <div className="absolute bottom-[80px] left-0 right-0 px-4 py-2 flex gap-2 overflow-x-auto custom-scrollbar bg-gradient-to-t from-[#0B1221] to-transparent z-10 pb-4">
+        <div className="bg-[#0B1221] border-t border-slate-800/60 px-4 py-3 flex gap-2 overflow-x-auto custom-scrollbar shrink-0 z-10">
           {quickReplies.map((qr, i) => (
             <button
               key={i}
@@ -587,7 +632,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
       )}
 
       {/* Input Area */}
-      <div className="bg-[#0B1221] border-t border-slate-800/60 p-3 sm:p-4 z-10 shrink-0">
+      <div className={"bg-[#0B1221] p-3 sm:p-4 z-10 shrink-0 " + (conversation?.status === "active" && quickReplies.length > 0 ? "" : "border-t border-slate-800/60")}>
         {filePreview && (
           <div className="mb-3 p-2 border border-slate-700 rounded-xl bg-slate-800/50 flex items-center gap-3 w-max">
             <img src={filePreview} alt="Preview" className="h-12 w-12 rounded-lg object-cover shadow-sm" />

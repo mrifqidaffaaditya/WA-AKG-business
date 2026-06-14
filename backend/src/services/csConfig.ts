@@ -1,7 +1,6 @@
-import fs from "fs";
-import path from "path";
-
-const configPath = path.join(process.cwd(), "cs_config.json");
+import { db, schema } from "../db/index.js";
+import { eq } from "drizzle-orm";
+import { generateId } from "../utils/id.js";
 
 export interface CsConfig {
   signatureEnabled: boolean;
@@ -27,21 +26,79 @@ const defaultConfig: CsConfig = {
   autoReplyResolve: "Terima kasih telah menghubungi kami. Sesi obrolan ini telah ditutup. \n\nMohon berikan penilaian atas pelayanan kami dengan membalas pesan ini menggunakan angka 1 (Sangat Buruk) hingga 5 (Sangat Baik).",
 };
 
-export function getCsConfig(): CsConfig {
+export async function getCsConfig(): Promise<CsConfig> {
   try {
-    if (fs.existsSync(configPath)) {
-      const data = fs.readFileSync(configPath, "utf-8");
-      return { ...defaultConfig, ...JSON.parse(data) };
+    const rows = await db.select().from(schema.csConfig).limit(1);
+    if (rows.length > 0) {
+      const row = rows[0];
+      return {
+        signatureEnabled: row.signature_enabled,
+        signatureTemplate: row.signature_template,
+        quickReplies: JSON.parse(row.quick_replies),
+        autoReplyClaimEnabled: row.auto_reply_claim_enabled,
+        autoReplyClaim: row.auto_reply_claim,
+        autoReplyResolveEnabled: row.auto_reply_resolve_enabled,
+        autoReplyResolve: row.auto_reply_resolve,
+      };
     }
+    
+    // Seed default if empty
+    const id = generateId();
+    const now = new Date().toISOString();
+    await db.insert(schema.csConfig).values({
+      id,
+      signature_enabled: defaultConfig.signatureEnabled,
+      signature_template: defaultConfig.signatureTemplate,
+      quick_replies: JSON.stringify(defaultConfig.quickReplies),
+      auto_reply_claim_enabled: defaultConfig.autoReplyClaimEnabled,
+      auto_reply_claim: defaultConfig.autoReplyClaim,
+      auto_reply_resolve_enabled: defaultConfig.autoReplyResolveEnabled,
+      auto_reply_resolve: defaultConfig.autoReplyResolve,
+      updated_at: now,
+    });
+    return defaultConfig;
   } catch (err) {
-    console.error("Failed to read cs_config.json", err);
+    console.error("Failed to read cs_config from db", err);
+    return defaultConfig;
   }
-  return defaultConfig;
 }
 
-export function updateCsConfig(config: Partial<CsConfig>): CsConfig {
-  const current = getCsConfig();
-  const updated = { ...current, ...config };
-  fs.writeFileSync(configPath, JSON.stringify(updated, null, 2), "utf-8");
-  return updated;
+export async function updateCsConfig(config: Partial<CsConfig>): Promise<CsConfig> {
+  try {
+    const current = await getCsConfig();
+    const updated = { ...current, ...config };
+    
+    const rows = await db.select().from(schema.csConfig).limit(1);
+    const now = new Date().toISOString();
+    
+    if (rows.length > 0) {
+      await db.update(schema.csConfig).set({
+        signature_enabled: updated.signatureEnabled,
+        signature_template: updated.signatureTemplate,
+        quick_replies: JSON.stringify(updated.quickReplies),
+        auto_reply_claim_enabled: updated.autoReplyClaimEnabled,
+        auto_reply_claim: updated.autoReplyClaim,
+        auto_reply_resolve_enabled: updated.autoReplyResolveEnabled,
+        auto_reply_resolve: updated.autoReplyResolve,
+        updated_at: now,
+      }).where(eq(schema.csConfig.id, rows[0].id));
+    } else {
+      const id = generateId();
+      await db.insert(schema.csConfig).values({
+        id,
+        signature_enabled: updated.signatureEnabled,
+        signature_template: updated.signatureTemplate,
+        quick_replies: JSON.stringify(updated.quickReplies),
+        auto_reply_claim_enabled: updated.autoReplyClaimEnabled,
+        auto_reply_claim: updated.autoReplyClaim,
+        auto_reply_resolve_enabled: updated.autoReplyResolveEnabled,
+        auto_reply_resolve: updated.autoReplyResolve,
+        updated_at: now,
+      });
+    }
+    return updated;
+  } catch (err) {
+    console.error("Failed to update cs_config in db", err);
+    return { ...defaultConfig, ...config };
+  }
 }

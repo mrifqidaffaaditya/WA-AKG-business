@@ -9,6 +9,7 @@ import { createAuditLog } from "../utils/audit.js";
 import { previewStock, clearStockCache, syncStockNow } from "../services/stock.js";
 import { logger } from "../utils/logger.js";
 import { getCsConfig, updateCsConfig } from "../services/csConfig.js";
+import { getActiveUserIds } from "../ws/index.js";
 
 const router = Router();
 
@@ -83,7 +84,7 @@ router.put("/bot-config", async (req: AuthRequest, res) => {
 
 router.get("/cs-config", async (_req, res) => {
   try {
-    const config = getCsConfig();
+    const config = await getCsConfig();
     res.json(config);
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -92,7 +93,7 @@ router.get("/cs-config", async (_req, res) => {
 
 router.put("/cs-config", async (req: AuthRequest, res) => {
   try {
-    const updated = updateCsConfig(req.body);
+    const updated = await updateCsConfig(req.body);
     
     await createAuditLog({
       userId: req.user!.sub,
@@ -178,6 +179,7 @@ router.get("/stock/preview", async (_req, res) => {
 
 router.get("/users", async (_req, res) => {
   try {
+    const activeUserIds = getActiveUserIds();
     const users = await db
       .select()
       .from(schema.users)
@@ -189,6 +191,7 @@ router.get("/users", async (_req, res) => {
         email: u.email,
         role: u.role,
         is_active: u.is_active,
+        is_online: activeUserIds.includes(u.id),
         created_at: u.created_at,
       }))
     );

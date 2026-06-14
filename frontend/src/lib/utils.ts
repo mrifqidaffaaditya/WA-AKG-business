@@ -23,31 +23,11 @@ export function timeAgo(date: string | Date | null | undefined): string {
 }
 
 export function formatPhone(phone: string): string {
-  let cleaned = phone.replace(/[^0-9+]/g, "");
+  let cleaned = phone.replace(/[^0-9]/g, "");
   if (cleaned.startsWith("0")) {
-    cleaned = "+62" + cleaned.slice(1);
+    cleaned = "62" + cleaned.slice(1);
   }
-  if (cleaned.startsWith("62") && !cleaned.startsWith("+")) {
-    cleaned = "+" + cleaned;
-  }
-  if (!cleaned.startsWith("+")) {
-    cleaned = "+" + cleaned;
-  }
-
-  const withoutPlus = cleaned.slice(1);
-  if (withoutPlus.length <= 3) return cleaned;
-
-  const prefix = withoutPlus.slice(0, 3);
-  let rest = withoutPlus.slice(3);
-
-  if (rest.length <= 4) {
-    return "+" + prefix + " " + rest;
-  }
-  if (rest.length <= 8) {
-    return "+" + prefix + " " + rest.slice(0, 4) + "-" + rest.slice(4);
-  }
-
-  return "+" + prefix + " " + rest.slice(0, 4) + "-" + rest.slice(4, 8) + "-" + rest.slice(8);
+  return "+" + cleaned;
 }
 
 let audioCtx: AudioContext | null = null;

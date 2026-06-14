@@ -62,19 +62,40 @@ export function initOrchestrator(): void {
 }
 
 async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> {
+  logger.info("[orchestrator] Received message full payload: " + JSON.stringify(msg, null, 2));
   const key = msg.key;
   if (!key?.remoteJid) return;
+  if (key.fromMe) return; // Skip messages sent by CS/bot to prevent loop/duplication
+
+  // Prevent duplicate message processing
+  if (key.id) {
+    const existing = await db
+      .select()
+      .from(schema.messages)
+      .where(eq(schema.messages.wa_message_id, key.id))
+      .limit(1);
+    if (existing.length > 0) {
+      logger.debug(`[orchestrator] Message ${key.id} already exists, skipping.`);
+      return;
+    }
+  }
 
   const jid = key.remoteJid;
   if (jid.includes("@g.us")) return;
 
-  const waNumber = extractWaNumber(jid);
-  const pushName = msg.pushName || waNumber;
-  const messageType = Object.keys(msg.message || {})[0];
+  const content = extractMessageText(msg);
+  const contentType = getMessageContentType(msg);
 
-  if (!messageType && !msg.message?.conversation && !msg.message?.extendedTextMessage) {
-    logger.debug("[orchestrator] Unknown message type:", Object.keys(msg.message || {}));
+  // Skip read receipts, delivery updates, and reactions (empty text/content type text)
+  if (!content && contentType === "text") {
+    logger.debug(`[orchestrator] Empty text message (likely receipt/protocol), skipping: ${key.id}`);
+    return;
   }
+
+  // Prefer key.senderPn (real phone number JID) over remoteJid (which might be a LID)
+  const phoneJid = key.senderPn || jid;
+  const waNumber = extractWaNumber(phoneJid);
+  const pushName = msg.pushName || waNumber;
 
   const customer = await findOrCreateCustomer({
     waNumber,
@@ -82,8 +103,6 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
   });
 
   let activeConv = await findActiveConversation(customer.id);
-
-  const content = extractMessageText(msg);
 
   // If there's no active conversation, check if it's a rating response
   if (!activeConv && content && /^[1-5]$/.test(content.trim())) {
@@ -108,9 +127,6 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
     });
   }
 
-  const content = extractMessageText(msg);
-  const contentType = getMessageContentType(msg);
-
   let savedMsg: typeof schema.messages.$inferSelect | null = null;
 
   if (content || contentType !== "text") {
@@ -120,6 +136,7 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
     let fileSize: number | null = null;
 
     if (contentType !== "text") {
+      const messageType = Object.keys(msg.message || {})[0];
       const media = await downloadWaMedia(msg as any);
       mediaType = messageType;
       fileName = (msg.message?.[messageType] as any)?.fileName || null;

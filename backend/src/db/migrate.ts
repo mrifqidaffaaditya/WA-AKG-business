@@ -116,6 +116,19 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON messages(conversation_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_conversations_status_updated ON conversations(status, updated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_customers_wa_number ON customers(wa_number)`,
+  `
+  CREATE TABLE IF NOT EXISTS cs_config (
+    id TEXT PRIMARY KEY,
+    signature_enabled INTEGER NOT NULL DEFAULT 0,
+    signature_template TEXT NOT NULL DEFAULT ' - {name}',
+    quick_replies TEXT NOT NULL,
+    auto_reply_claim_enabled INTEGER NOT NULL DEFAULT 1,
+    auto_reply_claim TEXT NOT NULL,
+    auto_reply_resolve_enabled INTEGER NOT NULL DEFAULT 1,
+    auto_reply_resolve TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+  `,
 ];
 
 async function run() {
