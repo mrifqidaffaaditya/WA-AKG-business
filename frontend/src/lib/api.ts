@@ -1,7 +1,18 @@
 const BASE = "";
+const FETCH_TIMEOUT_MS = 8000;
 
 let accessToken: string | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+
+function fetchWithTimeout(
+  input: RequestInfo,
+  init: RequestInit = {},
+  timeoutMs: number = FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 export function setTokens(access: string) {
   accessToken = access;
@@ -35,27 +46,35 @@ async function refreshAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
-    const res = await fetch(BASE + "/api/auth/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-    });
+    try {
+      const res = await fetchWithTimeout(BASE + "/api/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
 
-    if (!res.ok) {
+      if (!res.ok) {
+        clearTokens();
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login";
+        }
+        return null;
+      }
+
+      const data = await res.json();
+      const newAccess = data.accessToken || data.access_token;
+      accessToken = newAccess;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("access_token", newAccess);
+      }
+      return newAccess;
+    } catch {
       clearTokens();
       if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
         window.location.href = "/login";
       }
       return null;
     }
-
-    const data = await res.json();
-    const newAccess = data.accessToken || data.access_token;
-    accessToken = newAccess;
-    if (typeof window !== "undefined") {
-      localStorage.setItem("access_token", newAccess);
-    }
-    return newAccess;
   })();
 
   refreshPromise.finally(() => {
@@ -84,7 +103,7 @@ async function makeRequest(
     headers["Authorization"] = "Bearer " + token;
   }
 
-  let res = await fetch(BASE + url, {
+  let res = await fetchWithTimeout(BASE + url, {
     ...options,
     headers,
     credentials: "include",
@@ -94,7 +113,7 @@ async function makeRequest(
     const newToken = await refreshAccessToken();
     if (newToken) {
       headers["Authorization"] = "Bearer " + newToken;
-      res = await fetch(BASE + url, {
+      res = await fetchWithTimeout(BASE + url, {
         ...options,
         headers,
         credentials: "include",
@@ -119,18 +138,39 @@ async function makeRequest(
   }
 }
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
+
+async function makeRequestWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  raw: boolean = false
+): Promise<unknown> {
+  try {
+    return await makeRequest(url, options, raw);
+  } catch (err: unknown) {
+    if (isAbortError(err)) {
+      const timeoutError = new Error("Request timed out");
+      ;(timeoutError as unknown as Record<string, unknown>).status = 408;
+      throw timeoutError;
+    }
+    throw err;
+  }
+}
+
 export function api<T = unknown>(
   url: string,
   options: RequestInit = {}
 ): Promise<T> {
-  return makeRequest(url, options) as Promise<T>;
+  return makeRequestWithTimeout(url, options) as Promise<T>;
 }
 
 export function apiFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  return makeRequest(url, options, true) as Promise<Response>;
+  return makeRequestWithTimeout(url, options, true) as Promise<Response>;
 }
 
 export function get<T = unknown>(url: string): Promise<T> {

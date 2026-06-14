@@ -6,6 +6,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -34,21 +35,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const safeSetUser = useCallback((u: User | null) => {
+    if (mountedRef.current) setUserState(u);
+  }, []);
+
+  const safeSetLoading = useCallback((v: boolean) => {
+    if (mountedRef.current) setLoading(v);
+  }, []);
 
   const fetchUser = useCallback(async () => {
     let attempts = 0;
     while (attempts < 2) {
       try {
         const data = await get<{ user: User }>("/api/auth/me");
-        setUserState(data.user);
-        setLoading(false);
+        safeSetUser(data.user);
+        safeSetLoading(false);
         return;
       } catch (err: any) {
-        if (err && (err.status === 404 || err.status === 401)) {
+        if (err && (err.status === 404 || err.status === 401 || err.status === 408)) {
           clearTokens();
-          setUserState(null);
-          setLoading(false);
-          router.push("/login");
+          safeSetUser(null);
+          safeSetLoading(false);
           return;
         }
         attempts++;
@@ -58,19 +72,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     clearTokens();
-    setUserState(null);
-    setLoading(false);
-    router.push("/login");
-  }, [router]);
+    safeSetUser(null);
+    safeSetLoading(false);
+  }, [safeSetUser, safeSetLoading]);
 
   useEffect(() => {
     const tokens = loadTokens();
     if (tokens.access) {
       fetchUser();
     } else {
-      setLoading(false);
+      safeSetLoading(false);
     }
-  }, [fetchUser]);
+  }, [fetchUser, safeSetLoading]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      safeSetLoading(false);
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [safeSetLoading]);
 
   const login = async (email: string, password: string) => {
     const res = await fetch("/api/auth/login", {

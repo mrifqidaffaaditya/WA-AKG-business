@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, AuthRequest, requireRole } from "../middleware/auth.js";
+import { authenticate, AuthRequest, requireRole, canModifyRole, canModifyUser } from "../middleware/auth.js";
 import { db, schema } from "../db/index.js";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { generateId } from "../utils/id.js";
@@ -300,6 +300,12 @@ router.post("/users", async (req: AuthRequest, res) => {
       return;
     }
 
+    const requestedRole = role || "cs";
+    if (!canModifyRole(req.user!.role, requestedRole)) {
+      res.status(403).json({ error: "You can only create users with lower role level" });
+      return;
+    }
+
     const existing = await db
       .select()
       .from(schema.users)
@@ -320,7 +326,7 @@ router.post("/users", async (req: AuthRequest, res) => {
       name,
       email,
       password_hash: hashed,
-      role: role || "cs",
+      role: requestedRole,
       is_active: true,
       created_at: now,
     });
@@ -332,7 +338,7 @@ router.post("/users", async (req: AuthRequest, res) => {
       entityId: id,
     });
 
-    res.status(201).json({ id, name, email, role: role || "cs" });
+    res.status(201).json({ id, name, email, role: requestedRole });
   } catch (err) {
     logger.error("[admin] Create user error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -343,6 +349,8 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
   try {
     const { name, email, password, role, is_active } = req.body;
     const userId = req.params.id as string;
+    const actorRole = req.user!.role;
+    const actorId = req.user!.sub;
 
     const existing = await db
       .select()
@@ -355,10 +363,26 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
       return;
     }
 
+    const target = existing[0];
+    const targetRole = target.role;
+
+    if (!canModifyUser(actorRole, actorId, targetRole, userId)) {
+      res.status(403).json({ error: "You cannot modify this user" });
+      return;
+    }
+
+    if (role !== undefined && !canModifyRole(actorRole, role)) {
+      res.status(403).json({ error: "You can only assign roles lower than your own" });
+      return;
+    }
+
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (email !== undefined) updates.email = email;
-    if (role !== undefined) updates.role = role;
+    if (role !== undefined && role !== targetRole) {
+      updates.role = role;
+      await revokeAllUserTokens(userId);
+    }
     if (is_active !== undefined) updates.is_active = is_active;
     if (password) {
       if (password.length < 5) {
@@ -366,12 +390,11 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
         return;
       }
       updates.password_hash = await hashPassword(password);
-      // Revoke all sessions when password is changed
       await revokeAllUserTokens(userId);
     }
 
     // Check email uniqueness if changing email
-    if (email !== undefined && email !== existing[0].email) {
+    if (email !== undefined && email !== target.email) {
       const emailExists = await db
         .select()
         .from(schema.users)
@@ -389,7 +412,7 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
       .where(eq(schema.users.id, userId));
 
     await createAuditLog({
-      userId: req.user!.sub,
+      userId: actorId,
       action: "update_user",
       entityType: "users",
       entityId: userId,
@@ -405,17 +428,37 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
 router.delete("/users/:id", async (req: AuthRequest, res) => {
   try {
     const userId = req.params.id as string;
-    if (userId === req.user!.sub) {
+    const actorRole = req.user!.role;
+    const actorId = req.user!.sub;
+
+    if (userId === actorId) {
       res.status(400).json({ error: "Cannot delete yourself" });
       return;
     }
 
-    // Revoke all sessions before deleting
+    const existing = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const target = existing[0];
+
+    if (!canModifyUser(actorRole, actorId, target.role, userId)) {
+      res.status(403).json({ error: "You cannot delete this user" });
+      return;
+    }
+
     await revokeAllUserTokens(userId);
     await db.delete(schema.users).where(eq(schema.users.id, userId));
 
     await createAuditLog({
-      userId: req.user!.sub,
+      userId: actorId,
       action: "delete_user",
       entityType: "users",
       entityId: userId,

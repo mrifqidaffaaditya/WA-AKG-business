@@ -5,6 +5,33 @@ export interface AuthRequest extends Request {
   user?: { sub: string; role: string };
 }
 
+const ROLE_LEVEL: Record<string, number> = {
+  super_admin: 3,
+  admin: 2,
+  cs: 1,
+};
+
+export function getRoleLevel(role: string): number {
+  return ROLE_LEVEL[role] ?? 0;
+}
+
+export function canModifyRole(
+  actorRole: string,
+  targetRole: string
+): boolean {
+  return getRoleLevel(actorRole) > getRoleLevel(targetRole);
+}
+
+export function canModifyUser(
+  actorRole: string,
+  actorId: string,
+  targetRole: string,
+  targetId: string
+): boolean {
+  if (actorId === targetId) return false;
+  return getRoleLevel(actorRole) > getRoleLevel(targetRole);
+}
+
 export function authenticate(
   req: AuthRequest,
   res: Response,

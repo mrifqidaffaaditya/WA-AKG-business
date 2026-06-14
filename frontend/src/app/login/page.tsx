@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MessageCircle, ArrowRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,8 +30,21 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [forceShow, setForceShow] = useState(false);
+  const forceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const returnTo = searchParams.get("return_to") || "";
+
+  useEffect(() => {
+    if (loading) {
+      forceTimerRef.current = setTimeout(() => setForceShow(true), 8000);
+    } else {
+      if (forceTimerRef.current) clearTimeout(forceTimerRef.current);
+    }
+    return () => {
+      if (forceTimerRef.current) clearTimeout(forceTimerRef.current);
+    };
+  }, [loading]);
 
   useEffect(() => {
     if (!loading && user) {
@@ -39,7 +52,7 @@ function LoginForm() {
     }
   }, [loading, user, router, returnTo]);
 
-  if (loading) {
+  if (loading && !forceShow) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="flex items-center gap-3 text-slate-500">

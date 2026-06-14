@@ -1009,6 +1009,7 @@ interface User {
 }
 
 function UserPanel() {
+  const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -1144,6 +1145,22 @@ function UserPanel() {
     cs: "CS",
   };
 
+  const ROLE_LEVEL: Record<string, number> = {
+    super_admin: 3,
+    admin: 2,
+    cs: 1,
+  };
+
+  const actorRole = user?.role || "cs";
+  const actorRoleLevel = ROLE_LEVEL[actorRole] || 0;
+  const allowedRoles = Object.keys(ROLE_LEVEL).filter(
+    (r) => (ROLE_LEVEL[r] || 0) < actorRoleLevel
+  );
+
+  function canModify(target: User): boolean {
+    return (ROLE_LEVEL[target.role] || 0) < actorRoleLevel && target.id !== user?.id;
+  }
+
   return (
     <div className="animate-fadeIn">
       <div className="flex items-center justify-between mb-6">
@@ -1209,9 +1226,9 @@ function UserPanel() {
                 onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value as User["role"] }))}
                 className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-all"
               >
-                <option value="cs">CS</option>
-                <option value="admin">Admin</option>
-                <option value="super_admin">Super Admin</option>
+                {allowedRoles.map((r) => (
+                  <option key={r} value={r}>{roleLabels[r] || r}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -1292,26 +1309,63 @@ function UserPanel() {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => handleToggleActive(u)}
-                        title={u.is_active ? "Nonaktifkan" : "Aktifkan"}
+                        disabled={!canModify(u)}
+                        title={
+                          !canModify(u)
+                            ? u.id === user?.id
+                              ? "Tidak bisa mengubah status sendiri"
+                              : "Tidak bisa mengubah user dengan role ini"
+                            : u.is_active
+                              ? "Nonaktifkan"
+                              : "Aktifkan"
+                        }
                         className={
                           "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors " +
-                          (u.is_active
-                            ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-                            : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20")
+                          (!canModify(u)
+                            ? "opacity-30 cursor-not-allowed bg-slate-800 text-slate-600"
+                            : u.is_active
+                              ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                              : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20")
                         }
                       >
                         {u.is_active ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
                       </button>
                       <button
                         onClick={() => openEdit(u)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-500/20 transition-colors"
+                        disabled={!canModify(u)}
+                        title={
+                          !canModify(u)
+                            ? u.id === user?.id
+                              ? "Tidak bisa mengedit diri sendiri"
+                              : "Tidak bisa mengedit user dengan role ini"
+                            : "Edit"
+                        }
+                        className={
+                          "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors " +
+                          (!canModify(u)
+                            ? "opacity-30 cursor-not-allowed bg-slate-800 text-slate-600"
+                            : "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20")
+                        }
                       >
                         <Pencil size={13} />
                         Edit
                       </button>
                       <button
                         onClick={() => setDeleteTarget(u)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+                        disabled={!canModify(u)}
+                        title={
+                          !canModify(u)
+                            ? u.id === user?.id
+                              ? "Tidak bisa menghapus diri sendiri"
+                              : "Tidak bisa menghapus user dengan role ini"
+                            : "Hapus"
+                        }
+                        className={
+                          "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors " +
+                          (!canModify(u)
+                            ? "opacity-30 cursor-not-allowed bg-slate-800 text-slate-600"
+                            : "bg-red-500/10 text-red-400 hover:bg-red-500/20")
+                        }
                       >
                         <Trash2 size={13} />
                         Hapus
@@ -1366,11 +1420,12 @@ function UserPanel() {
             <select
               value={editForm.role}
               onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as User["role"] }))}
-              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-all"
+              disabled={!canModify(editTarget!)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-all disabled:opacity-50"
             >
-              <option value="cs">CS</option>
-              <option value="admin">Admin</option>
-              <option value="super_admin">Super Admin</option>
+              {allowedRoles.map((r) => (
+                <option key={r} value={r}>{roleLabels[r] || r}</option>
+              ))}
             </select>
           </div>
           <div className="flex items-center justify-between py-1">
