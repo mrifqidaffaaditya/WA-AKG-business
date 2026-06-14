@@ -143,6 +143,15 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
       waNumber,
       customerName: pushName,
     });
+    broadcast("conversation:new", {
+      id: activeConv.id,
+      wa_number: waNumber,
+      customer_name: pushName,
+      status: "bot",
+      claimed_by: null,
+      updated_at: new Date().toISOString(),
+    });
+    await emitQueueCount();
   }
 
   let savedMsg: typeof schema.messages.$inferSelect | null = null;

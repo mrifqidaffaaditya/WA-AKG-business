@@ -168,30 +168,35 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
     });
 
     socket.on("conversation:new", (conv: Conversation) => {
-      setQueueCount((prev) => prev + 1);
+      if (conv.status === "waiting") {
+        setQueueCount((prev) => prev + 1);
+      }
 
       const currentTab = activeTabRef.current;
 
       setConversations((prev) => {
         if (prev.some((c) => c.id === conv.id)) return prev;
+        if (currentTab === "waiting" && conv.status !== "waiting") return prev;
         if (currentTab === "all" || currentTab === "waiting") {
           return [conv, ...prev];
         }
         return prev;
       });
 
-      showBrowserNotification(
-        "Customer Baru",
-        (conv.customer_name || conv.wa_number) + " menunggu dilayani CS"
-      );
-
-      setNewChatPopup({ conv, visible: true });
-      if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
-      popupTimerRef.current = setTimeout(() => {
-        setNewChatPopup((prev) =>
-          prev?.conv.id === conv.id ? { ...prev, visible: false } : prev
+      if (conv.status === "waiting") {
+        showBrowserNotification(
+          "Customer Baru",
+          (conv.customer_name || conv.wa_number) + " menunggu dilayani CS"
         );
-      }, 6000);
+
+        setNewChatPopup({ conv, visible: true });
+        if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+        popupTimerRef.current = setTimeout(() => {
+          setNewChatPopup((prev) =>
+            prev?.conv.id === conv.id ? { ...prev, visible: false } : prev
+          );
+        }, 6000);
+      }
     });
 
     socket.on(

@@ -14,6 +14,7 @@
 - **Session Timeout Background Job** — Restructured and fixed the session timeout check background worker to run correctly every 60s, checking and automatically resolving idle active conversations. Hold conversations are exempt from timeout.
 - **Chat Bubble Alignment** — Fixed mobile/desktop alignment where customer message bubbles are left-aligned and Customer Service (CS) message bubbles are right-aligned.
 - **Admin Save Error Feedback** — Improved error feedback on the admin configuration page. Validates relationship warnings (e.g. warning timeout must be less than session timeout) and displays custom server error messages in the modal instead of a generic failure message.
+- **New Conversation Visibility** — Fixed bug where new customer sessions (status `bot`) did not auto-appear in the CS chat list. Backend now broadcasts `conversation:new` immediately after conversation creation (not only on escalation). Frontend handler always inserts into the "all" and "waiting" tabs, while browser notifications and popup banners only trigger on `"waiting"` (escalated) conversations.
 
 ## [3.4.1] — 2026-06-15
 
