@@ -6,11 +6,11 @@ Guide to setting up and troubleshooting the WhatsApp Gateway.
 
 WA-AKG Business uses **Baileys** — an open-source WhatsApp Web API library that connects using the WhatsApp Web protocol. This means:
 
-- ✅ No WhatsApp Business API required
-- ✅ Uses a standard WhatsApp account
-- ✅ Free to use (no Meta fees)
-- ⚠️ Requires a phone number not already linked to WhatsApp Web
-- ⚠️ Subject to WhatsApp's rate limits and policies
+- No WhatsApp Business API required
+- Uses a standard WhatsApp account
+- Free to use (no Meta fees)
+- Requires a phone number not already linked to WhatsApp Web
+- Subject to WhatsApp's rate limits and policies
 
 ## Setup Steps
 
@@ -104,10 +104,10 @@ To move your WA session to another server:
 
 ## Security Notes
 
-- 🔒 Session files contain authentication credentials — treat them like passwords
-- 🔒 Never commit session files to git (they are in `.gitignore`)
-- 🔒 Store backups securely
-- 🔒 If a session file is exposed, immediately:
+- Session files contain authentication credentials — treat them like passwords
+- Never commit session files to git (they are in `.gitignore`)
+- Store backups securely
+- If a session file is exposed, immediately:
   1. Delete the session
   2. Log out from WhatsApp on all devices
   3. Re-authenticate with a new QR scan

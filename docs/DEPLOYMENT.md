@@ -105,4 +105,4 @@ cp data/wa_akg.db "backups/wa-akg-$(date +%Y%m%d-%H%M%S).db"
 tar -czf "backups/sessions-$(date +%Y%m%d).tar.gz" sessions/
 ```
 
-**⚠️ Never commit session files to git.** They contain authentication credentials.
+**Never commit session files to git.** They contain authentication credentials.

@@ -200,12 +200,12 @@ Service Worker menerima push event → tampilkan notifikasi OS
 
 | Notifikasi | Target | Trigger | Isi |
 |---|---|---|---|
-| Customer baru di antrian | Semua CS aktif | `#chatcs` / eskalasi bot | "🔔 [Nama/No WA] menunggu dilayani CS" |
-| Pesan baru di chat aktif | CS yang mengklaim | Customer kirim pesan | "💬 [Nama Customer]: [preview pesan]" |
-| Chat diklaim CS lain | CS lain yang memantau | CS mengklaim percakapan | "✅ [Nama CS] mengambil percakapan [Customer]" |
-| Chat ditransfer ke CS | CS tujuan transfer | Aksi transfer | "📨 Percakapan dari [Customer] dialihkan ke Anda" |
-| WA Gateway disconnect | Admin | Koneksi WA terputus | "⚠️ WhatsApp Gateway terputus, perlu reconnect" |
-| Antrian menumpuk | Admin | Queue > threshold tertentu | "🚨 [N] customer menunggu, tidak ada CS aktif" |
+| Customer baru di antrian | Semua CS aktif | `#chatcs` / eskalasi bot | "[Nama/No WA] menunggu dilayani CS" |
+| Pesan baru di chat aktif | CS yang mengklaim | Customer kirim pesan | "[Nama Customer]: [preview pesan]" |
+| Chat diklaim CS lain | CS lain yang memantau | CS mengklaim percakapan | "[Nama CS] mengambil percakapan [Customer]" |
+| Chat ditransfer ke CS | CS tujuan transfer | Aksi transfer | "Percakapan dari [Customer] dialihkan ke Anda" |
+| WA Gateway disconnect | Admin | Koneksi WA terputus | "WhatsApp Gateway terputus, perlu reconnect" |
+| Antrian menumpuk | Admin | Queue > threshold tertentu | "[N] customer menunggu, tidak ada CS aktif" |
 
 #### Konfigurasi Notifikasi per User
 Setiap user (CS/Admin) dapat mengatur preferensi notifikasi dari halaman profil/settings dashboard:

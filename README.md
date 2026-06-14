@@ -1,4 +1,4 @@
-# 🟢 WA-AKG Business
+# WA-AKG Business
 
 > **Open-source multi-user WhatsApp Customer Service platform** with AI chatbot, queue system, real-time notifications, and stock integration.
 
@@ -18,22 +18,22 @@
 
 ---
 
-## 📖 Table of Contents
+## Table of Contents
 
-- [Overview](#-overview)
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [Quick Start](#-quick-start)
-- [Environment Variables](#-environment-variables)
-- [Default Credentials](#-default-credentials)
-- [Documentation](#-documentation)
-- [Contributing](#-contributing)
-- [License](#-license)
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Quick Start](#quick-start)
+- [Environment Variables](#environment-variables)
+- [Default Credentials](#default-credentials)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## 🔭 Overview
+## Overview
 
 WA-AKG Business is a complete **WhatsApp Customer Service Management Platform** that allows businesses to:
 
@@ -47,15 +47,15 @@ The system uses **Baileys** as WhatsApp gateway (no WhatsApp Business API requir
 
 ---
 
-## ✨ Features
+## Features
 
-### 🤖 AI Chatbot
+### AI Chatbot
 - OpenAI-compatible API (GPT-4o, GPT-4, any provider)
 - Configurable persona, system prompt, business info, escalation keywords
 - Auto-detects escalation triggers and routes to human CS
 - Customer can type `#chatcs` to request human agent
 
-### 📋 Queue & Conversation Management
+### Queue & Conversation Management
 - Waiting queue with real-time broadcast to all CS agents
 - First-claim system — conversation is bound to the claiming CS
 - Transfer conversations between CS agents
@@ -63,7 +63,7 @@ The system uses **Baileys** as WhatsApp gateway (no WhatsApp Business API requir
 - View full chat history including bot session
 - Customer rating system (1-5 stars)
 
-### 🔔 Real-time Notifications
+### Real-time Notifications
 - WebSocket (Socket.io) for in-app live updates
 - Web Push API + Service Worker for browser notifications
 - Native browser notification fallback
@@ -71,32 +71,32 @@ The system uses **Baileys** as WhatsApp gateway (no WhatsApp Business API requir
 - Floating claim popup for new waiting chats
 - Per-user notification preferences (toggle on/off per type)
 
-### 📦 Stock Integration
+### Stock Integration
 - Google Sheets via Service Account (no OAuth refresh needed)
 - MySQL / PostgreSQL as alternative stock source
 - Flexible column mapping from admin dashboard
 - Cached with configurable TTL
 - Bot answers stock questions with real-time data
 
-### 👥 Returning Customer Detection
+### Returning Customer Detection
 - Identifies customers by WhatsApp number across sessions
 - Injects previous session summary into bot context
 - "Returning Customer" badge in CS dashboard
 - AI-generated session summaries on conversation resolve
 
-### 📜 Infinity Scroll
+### Infinity Scroll
 - Cursor-based pagination for chat messages (30 per batch)
 - Cursor-based pagination for conversation list (20 per batch)
 - Scroll position preserved when loading older messages
 - Auto-scroll to latest message on room entry
 
-### 🖥️ Dashboard
+### Dashboard
 - **CS Panel:** Waiting Queue, My Chats, All Chats tabs, inline chat window, drag-and-drop file upload, queue badge, claim popup, sound notifications
 - **Admin Panel:** Bot config, Stock config, User CRUD, Gateway status + QR, Audit log, session timeout settings
 - **Dark theme** (OLED-friendly) — no light-mode elements
 - **Premium modals** — all native alert/confirm replaced with custom dark-themed modals
 
-### 🛡️ Security
+### Security
 - JWT access token (15 min) + refresh token (7 days, httpOnly)
 - Bcrypt password hashing (12 rounds)
 - Role-Based Access Control (super_admin, admin, cs)
@@ -107,7 +107,7 @@ The system uses **Baileys** as WhatsApp gateway (no WhatsApp Business API requir
 
 ---
 
-## 🏗 Architecture
+## Architecture
 
 Split architecture with Nginx reverse proxy. Only port 4040 is exposed:
 
@@ -134,7 +134,7 @@ Frontend (4041)  ← internal only
 
 ---
 
-## 🧰 Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -151,9 +151,9 @@ Frontend (4041)  ← internal only
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### 🐳 Docker (Recommended — 3 steps)
+### Docker (Recommended — 3 steps)
 
 ```bash
 git clone https://github.com/mrifqidaffaaditya/WA-AKG-business.git
@@ -167,12 +167,12 @@ Done. Open `http://localhost:4040` and login.
 
 | Service | Port (Internal) | Exposed |
 |---|---|---|
-| Nginx | 4040 | ✅ Yes |
-| Frontend | 4041 | ❌ No |
-| Backend | 4000 | ❌ No |
-| Redis | 6379 | ✅ 6380 (host) |
+| Nginx | 4040 | Yes |
+| Frontend | 4041 | No |
+| Backend | 4000 | No |
+| Redis | 6379 | 6380 (host) |
 
-### 💻 Manual (Development)
+### Manual (Development)
 
 ```bash
 git clone https://github.com/mrifqidaffaaditya/WA-AKG-business.git
@@ -195,7 +195,7 @@ cd frontend && npm install && npm run dev
 
 ---
 
-## 🔧 Environment Variables
+## Environment Variables
 
 <details>
 <summary>Click to expand full <code>.env</code> reference</summary>
@@ -244,7 +244,7 @@ CONTEXT_EXPIRY_DAYS=90
 
 ---
 
-## 🔑 Default Credentials
+## Default Credentials
 
 | Role | Email | Password |
 |---|---|---|
@@ -252,11 +252,11 @@ CONTEXT_EXPIRY_DAYS=90
 | Admin | `admin@wa-akg.local` | `admin123` |
 | CS Agent | `cs@wa-akg.local` | `cs123` |
 
-> ⚠️ **Change passwords immediately** after first login in production!
+> **Change passwords immediately** after first login in production!
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 Full documentation is available in the [`/docs`](./docs) directory:
 
@@ -269,7 +269,7 @@ Full documentation is available in the [`/docs`](./docs) directory:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for guidelines.
 
@@ -289,13 +289,13 @@ cd frontend && npm run typecheck
 
 ---
 
-## 📄 License
+## License
 
 MIT © [WA-AKG Business Contributors](https://github.com/mrifqidaffaaditya/WA-AKG-business)
 
 ---
 
 <p align="center">
-  Made with ❤️ by the WA-AKG Business community
+  Created by the WA-AKG Business community
 </p>
 

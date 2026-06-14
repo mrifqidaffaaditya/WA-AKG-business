@@ -1,6 +1,6 @@
 # Contributing to WA-AKG Business
 
-First off, thank you for considering contributing to WA-AKG Business! 🎉
+First off, thank you for considering contributing to WA-AKG Business!
 
 This document provides guidelines for contributing to the project. Following these guidelines helps maintain code quality and makes the review process smoother.
 
@@ -25,7 +25,7 @@ This project adheres to the [Contributor Covenant Code of Conduct](./CODE_OF_CON
 
 ## How Can I Contribute?
 
-### 🐛 Reporting Bugs
+### Reporting Bugs
 
 1. **Search existing issues** to avoid duplicates.
 2. Use the **Bug Report template** when opening an issue.
@@ -35,13 +35,13 @@ This project adheres to the [Contributor Covenant Code of Conduct](./CODE_OF_CON
    - Environment details (OS, Node version, browser)
    - Screenshots if applicable
 
-### 💡 Suggesting Features
+### Suggesting Features
 
 1. **Search existing issues** — someone might have already proposed it.
 2. Use the **Feature Request template**.
 3. Explain the problem it solves and the use case.
 
-### 🔧 Code Contributions
+### Code Contributions
 
 Areas where we especially welcome contributions:
 
@@ -242,4 +242,4 @@ Documentation lives in the `/docs` directory. When adding features:
 
 ---
 
-Thank you for contributing! 🚀
+Thank you for contributing!

@@ -21,7 +21,7 @@
 ## [3.1.0] — 2026-06-14
 
 
-### 🎨 UI Redesign — Sidebar Navigation & Chat Stability
+### UI Redesign — Sidebar Navigation & Chat Stability
 
 ### Added
 - **Expandable sidebar** — collapsible sidebar (w-16 ↔ w-56) with smooth transition, replacing icon-only left rail
@@ -55,7 +55,7 @@
 
 ## [3.0.0] — 2026-06-14
 
-### 🎉 v3 Rewrite — Split Architecture with Nginx
+### v3 Rewrite — Split Architecture with Nginx
 
 Complete rewrite from a single-container Next.js 15 monolith into a clean split architecture with Nginx reverse proxy. Only one port (4040) is exposed to the outside world.
 
