@@ -11,6 +11,7 @@
 - **Phone Number Formatting** — Simplified `formatPhone` to remove all spaces, hyphens, and return a clean unified digit format prefixed with a `+` (e.g. `+6287748687946`).
 - **Duplicate & Blank Message Prevention** — Improved orchestrator to ignore empty status/read/delivery reports from Baileys, filter out self-sent (`fromMe: true`) messages, and drop duplicates by checking `waMessageId` against SQLite.
 - **LID Conversation Mapping** — Updated orchestrator to automatically map unknown numbers/LID senders (`key.senderPn || remoteJid`) to extract the real JID/phone number.
+- **Emoji-free Markdown Documentation** — Stripped all emojis from all markdown documentation files (including README, PRD, docs) and updated all table-of-contents links for a cleaner, fully professional presentation.
 
 ### Fixed
 - **LID Decryption Error ("Menunggu Pesan")** — Fixed WhatsApp decryption failure when agent replies to contacts using a LID by dynamically mapping and routing agent messages to their corresponding active LID JID stored in the customer database record.
