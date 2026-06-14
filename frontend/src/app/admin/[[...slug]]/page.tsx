@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import DashboardShell from "@/components/DashboardShell";
 import Modal from "@/components/Modal";
 import { useAuth } from "@/hooks/useAuth";
@@ -56,23 +56,18 @@ export default function AdminPage() {
         </DashboardShell>
       }
     >
-      <AdminContent />
+      <AdminContent params={useParams() as { slug?: string[] }} />
     </Suspense>
   );
 }
 
-function AdminContent() {
-  const searchParams = useSearchParams();
+function AdminContent({ params }: { params: { slug?: string[] } }) {
   const router = useRouter();
   const { user } = useAuth();
-  const tabParam = searchParams.get("tab") as TabType | null;
-  const [activeTab, setActiveTab] = useState<TabType>(tabParam || "dashboard");
 
-  useEffect(() => {
-    if (tabParam && tabParam !== activeTab) {
-      setActiveTab(tabParam);
-    }
-  }, [tabParam]);
+  const slug = params.slug?.[0] || "dashboard";
+  const VALID_TABS: TabType[] = ["dashboard", "bot", "stock", "users", "gateway", "audit", "cs_config"];
+  const activeTab: TabType = VALID_TABS.includes(slug as TabType) ? (slug as TabType) : "dashboard";
 
   useEffect(() => {
     if (user && user.role === "cs") {
@@ -81,13 +76,26 @@ function AdminContent() {
   }, [user, router]);
 
   useEffect(() => {
-    if (user?.role !== "cs") {
+    if (user && user.role !== "cs") {
       setupPushNotifications();
       connect();
     }
   }, [user]);
 
-  if (user?.role === "cs") return null;
+  if (!user) {
+    return (
+      <DashboardShell>
+        <div className="flex items-center justify-center h-full">
+          <div className="flex items-center gap-3 text-slate-500">
+            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <span className="text-sm">Memuat...</span>
+          </div>
+        </div>
+      </DashboardShell>
+    );
+  }
+
+  if (user.role === "cs") return null;
 
   return (
     <DashboardShell>
@@ -1151,7 +1159,7 @@ function UserPanel() {
     cs: 1,
   };
 
-  const actorRole = user?.role || "cs";
+  const actorRole = user ? user.role : "cs";
   const actorRoleLevel = ROLE_LEVEL[actorRole] || 0;
   const allowedRoles = Object.keys(ROLE_LEVEL).filter(
     (r) => (ROLE_LEVEL[r] || 0) < actorRoleLevel

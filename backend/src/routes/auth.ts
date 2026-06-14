@@ -89,6 +89,7 @@ router.post("/login", loginRateLimitPassthrough, async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        is_active: user.is_active,
       },
     });
   } catch {
@@ -186,6 +187,7 @@ router.get("/me", authenticate, async (req: AuthRequest, res) => {
         name: u.name,
         email: u.email,
         role: u.role,
+        is_active: u.is_active,
       },
     });
   } catch {

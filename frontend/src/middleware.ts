@@ -37,6 +37,15 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/cs?tab=mine", request.url));
   }
 
+  // Redirect invalid admin paths to dashboard
+  if (pathname.startsWith("/admin/")) {
+    const validAdminTabs = ["dashboard", "bot", "stock", "users", "gateway", "audit", "cs_config"];
+    const adminSegment = pathname.replace("/admin/", "").split("/")[0];
+    if (adminSegment && !validAdminTabs.includes(adminSegment)) {
+      return NextResponse.redirect(new URL("/admin", request.url));
+    }
+  }
+
   if (pathname.startsWith("/cs")) {
     const segments = pathname.split("/").filter(Boolean);
     const chatId = segments[1];

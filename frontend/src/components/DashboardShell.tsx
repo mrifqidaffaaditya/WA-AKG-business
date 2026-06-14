@@ -58,10 +58,16 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   const isAdminPage = pathname?.startsWith("/admin");
 
   const isTabActive = (tab: string) => {
-    const currentTab = searchParams?.get("tab") || "";
-    if (!currentTab && tab === "dashboard" && isAdminPage) return true;
-    if (!currentTab && tab === "all" && !isAdminPage) return true;
-    return currentTab === tab;
+    if (isAdminPage) {
+      const afterAdmin = pathname === "/admin" ? "" : (pathname?.replace("/admin/", "") || "");
+      const currentTab = afterAdmin || "dashboard";
+      if (tab === "dashboard" && currentTab === "dashboard") return true;
+      return currentTab === tab;
+    } else {
+      const currentTab = searchParams?.get("tab") || "";
+      if (!currentTab && tab === "all") return true;
+      return currentTab === tab;
+    }
   };
 
   const navItems = isAdmin
@@ -175,7 +181,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             <button
               key={item.tab}
               onClick={() => {
-                router.push(basePath + "?tab=" + item.tab);
+                const targetPath = isAdmin
+                  ? (item.tab === "dashboard" ? "/admin" : "/admin/" + item.tab)
+                  : ("/cs?tab=" + item.tab);
+                router.push(targetPath);
                 setMobileOpen(false);
               }}
               className={
