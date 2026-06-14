@@ -13,3 +13,4 @@ sessions/
 .DS_Store
 .env.local
 .env.production
+*.tsbuildinfo
