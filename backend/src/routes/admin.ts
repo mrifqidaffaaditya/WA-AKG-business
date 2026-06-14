@@ -295,8 +295,8 @@ router.post("/users", async (req: AuthRequest, res) => {
       res.status(400).json({ error: "name, email, password are required" });
       return;
     }
-    if (password.length < 6) {
-      res.status(400).json({ error: "Password must be at least 6 characters" });
+    if (password.length < 5) {
+      res.status(400).json({ error: "Password must be at least 5 characters" });
       return;
     }
 
@@ -361,8 +361,8 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
     if (role !== undefined) updates.role = role;
     if (is_active !== undefined) updates.is_active = is_active;
     if (password) {
-      if (password.length < 6) {
-        res.status(400).json({ error: "Password must be at least 6 characters" });
+      if (password.length < 5) {
+        res.status(400).json({ error: "Password must be at least 5 characters" });
         return;
       }
       updates.password_hash = await hashPassword(password);

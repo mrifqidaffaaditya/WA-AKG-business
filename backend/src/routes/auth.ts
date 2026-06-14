@@ -31,8 +31,8 @@ router.post("/login", loginRateLimitPassthrough, async (req, res) => {
       res.status(400).json({ error: "Invalid email format" });
       return;
     }
-    if (typeof password !== "string" || password.length < 6) {
-      res.status(400).json({ error: "Password must be at least 6 characters" });
+    if (typeof password !== "string" || password.length < 5) {
+      res.status(400).json({ error: "Password must be at least 5 characters" });
       return;
     }
 
