@@ -147,10 +147,7 @@ export async function connectWa(): Promise<void> {
 
     if (connection === "close") {
       const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
-      const isRestart =
-        reason === DisconnectReason.loggedOut ||
-        reason === DisconnectReason.restartRequired ||
-        reason === DisconnectReason.timedOut;
+      const isRestart = reason !== DisconnectReason.loggedOut;
 
       connectionStatus = "disconnected";
       currentQR = null;
