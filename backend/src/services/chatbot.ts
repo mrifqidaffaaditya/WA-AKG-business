@@ -89,11 +89,10 @@ export async function generateBotResponse(
       (Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24)
     );
     if (daysSince < config.contextExpiryDays) {
-      returningContext = `\n[KONTEKS PELANGGAN KEMBALI]\nNama: ${
-        customer.display_name || waNumber
-      }\nRingkasan sesi sebelumnya: ${customer.last_summary}\nSesi terakhir: ${
-        customer.last_active_at
-      }\nTotal sesi: ${customer.total_sessions}\n`;
+      returningContext = `Pelanggan: ${customer.display_name || waNumber}
+Ringkasan Sesi Lalu: ${customer.last_summary}
+Waktu Sesi Lalu: ${customer.last_active_at}
+Total Sesi Sebelumnya: ${customer.total_sessions}`;
     }
   }
 
@@ -101,15 +100,16 @@ export async function generateBotResponse(
 
 [INFORMASI BISNIS]
 ${botConfig.businessInfo}
-${returningContext}
 ${stockContext}
-
+${returningContext ? `\n[RIWAYAT PERCAKAPAN SEBELUMNYA (HANYA REFERENSI)]\n${returningContext}\n` : ""}
 [HAL PENTING]
-- Balas dalam Bahasa Indonesia yang ramah dan profesional
-- Jika pelanggan minta bicara CS atau tampak marah/kecewa, arahkan bahwa CS akan segera menghubungi
-- Jika ditanya stok, gunakan data stok yang tersedia
-- Balasan singkat dan jelas, tidak bertele-tele
-- Nama Anda adalah ${botConfig.personaName}`;
+- Balas dalam Bahasa Indonesia yang ramah dan profesional.
+- Nama Anda adalah ${botConfig.personaName}.
+- JANGAN PERNAH menyalin, mengulangi secara mentah, atau membacakan ringkasan riwayat percakapan sebelumnya kepada pelanggan. Gunakan informasi tersebut hanya sebagai latar belakang konteks untuk memahami situasi pelanggan.
+- Jika pesan pelanggan sangat singkat, tidak jelas, atau berupa satu karakter/sapaan pendek saja (seperti "p", "halo", "?", "tes"), tanggapi dengan sapaan ramah dan tanyakan bagaimana Anda dapat membantu mereka hari ini. Jangan mengulangi riwayat percakapan sebelumnya.
+- Jika pelanggan minta bicara CS atau tampak marah/kecewa, arahkan bahwa CS akan segera menghubungi.
+- Jika ditanya stok, gunakan data stok yang tersedia.
+- Balasan singkat dan jelas, tidak bertele-tele.`;
 
   try {
     const completion = await client.chat.completions.create({
