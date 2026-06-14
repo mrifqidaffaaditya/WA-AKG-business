@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.4.2] — 2026-06-15
+
+### Added
+- **Hold Status Toggle** — Customer Service agents can now toggle conversation status between "Active" and "On Hold" (via responsive Hold/Resume buttons in the header that collapse to icon-only on mobile devices). On Hold conversations are styled with a premium orange badge.
+- **Inactivity Warning Message** — Added an inactivity warning feature before automatic session close. Configurable via "Peringatan Timeout (menit sebelum close)" in the admin bot configuration. If there is no activity for the designated period, the bot automatically sends a warning message asking if they wish to remain connected.
+- **Reactivation Group Notification** — When a resolved session is reactivated (either by a CS sending a message or other actions), a specific `notifyReactivate` group notification (`[timestamp] 🔄 Sesi Diaktifkan Kembali`) is dispatched to the configured WhatsApp group log.
+- **Database Schema Updates** — Rebuilt conversations CHECK constraint to include the `'hold'` status, and added columns `session_timeout_warning_mins` to `bot_config` and `warning_sent` to `conversations`.
+
+### Fixed
+- **Session Timeout Background Job** — Restructured and fixed the session timeout check background worker to run correctly every 60s, checking and automatically resolving idle active conversations. Hold conversations are exempt from timeout.
+- **Chat Bubble Alignment** — Fixed mobile/desktop alignment where customer message bubbles are left-aligned and Customer Service (CS) message bubbles are right-aligned.
+- **Admin Save Error Feedback** — Improved error feedback on the admin configuration page. Validates relationship warnings (e.g. warning timeout must be less than session timeout) and displays custom server error messages in the modal instead of a generic failure message.
+
 ## [3.4.1] — 2026-06-15
 
 ### Added

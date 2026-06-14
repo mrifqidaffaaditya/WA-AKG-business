@@ -31,7 +31,7 @@ export const conversations = sqliteTable("conversations", {
     .references(() => customers.id, { onDelete: "cascade" }),
   wa_number: text("wa_number").notNull(),
   customer_name: text("customer_name"),
-  status: text("status", { enum: ["bot", "waiting", "active", "resolved"] })
+  status: text("status", { enum: ["bot", "waiting", "active", "resolved", "hold"] })
     .notNull()
     .default("bot"),
   claimed_by: text("claimed_by").references(() => users.id, {
@@ -39,6 +39,7 @@ export const conversations = sqliteTable("conversations", {
   }),
   rating: integer("rating"),
   review: text("review"),
+  warning_sent: integer("warning_sent", { mode: "boolean" }).notNull().default(false),
   created_at: text("created_at").notNull(),
   updated_at: text("updated_at").notNull(),
 });
@@ -75,6 +76,7 @@ export const botConfig = sqliteTable("bot_config", {
   business_info: text("business_info"),
   escalation_keywords: text("escalation_keywords"),
   session_timeout_mins: integer("session_timeout_mins").notNull().default(30),
+  session_timeout_warning_mins: integer("session_timeout_warning_mins").notNull().default(5),
   auto_close_enabled: integer("auto_close_enabled", { mode: "boolean" })
     .notNull()
     .default(false),

@@ -18,7 +18,7 @@ interface Conversation {
   id: string;
   wa_number: string;
   customer_name: string | null;
-  status: "bot" | "waiting" | "active" | "resolved";
+  status: "bot" | "waiting" | "active" | "resolved" | "hold";
   claimed_by: string | null;
   updated_at: string;
   last_message?: string;

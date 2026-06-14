@@ -46,7 +46,7 @@ export async function findOrCreateCustomer(params: {
   return { customer: rows[0], isNew: true };
 }
 
-export type ConversationStatus = "bot" | "waiting" | "active" | "resolved";
+export type ConversationStatus = "bot" | "waiting" | "active" | "resolved" | "hold";
 
 export async function createConversation(params: {
   customerId: string;
@@ -98,7 +98,7 @@ export async function findActiveConversation(
     .where(
       and(
         eq(schema.conversations.customer_id, customerId),
-        inArray(schema.conversations.status, ["bot", "waiting", "active"])
+        inArray(schema.conversations.status, ["bot", "waiting", "active", "hold"])
       )
     )
     .orderBy(desc(schema.conversations.created_at))
@@ -170,7 +170,7 @@ export async function claimConversation(
   await db.transaction(async (tx) => {
     await tx
       .update(schema.conversations)
-      .set({ claimed_by: csId, status: "active", updated_at: now })
+      .set({ claimed_by: csId, status: "active", warning_sent: false, updated_at: now })
       .where(
         and(
           eq(schema.conversations.id, conversationId),
@@ -196,7 +196,7 @@ export async function transferConversation(
   await db.transaction(async (tx) => {
     await tx
       .update(schema.conversations)
-      .set({ claimed_by: toCsId, updated_at: now })
+      .set({ claimed_by: toCsId, warning_sent: false, updated_at: now })
       .where(
         and(
           eq(schema.conversations.id, conversationId),
@@ -274,7 +274,7 @@ export async function addMessage(params: {
 
       await tx
         .update(schema.conversations)
-        .set({ updated_at: now })
+        .set({ updated_at: now, warning_sent: false })
         .where(eq(schema.conversations.id, params.conversationId));
 
       // update customer last_active_at

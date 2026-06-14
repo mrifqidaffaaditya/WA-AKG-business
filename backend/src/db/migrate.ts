@@ -35,10 +35,11 @@ const MIGRATIONS = [
     customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
     wa_number TEXT NOT NULL,
     customer_name TEXT,
-    status TEXT NOT NULL DEFAULT 'bot' CHECK(status IN ('bot','waiting','active','resolved')),
+    status TEXT NOT NULL DEFAULT 'bot' CHECK(status IN ('bot','waiting','active','resolved','hold')),
     claimed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     rating INTEGER,
     review TEXT,
+    warning_sent INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -65,6 +66,7 @@ const MIGRATIONS = [
     business_info TEXT,
     escalation_keywords TEXT,
     session_timeout_mins INTEGER NOT NULL DEFAULT 30,
+    session_timeout_warning_mins INTEGER NOT NULL DEFAULT 5,
     auto_close_enabled INTEGER NOT NULL DEFAULT 0,
     updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     updated_at TEXT NOT NULL
@@ -157,6 +159,46 @@ async function run() {
   await client.execute("PRAGMA busy_timeout = 5000");
   await client.execute("PRAGMA foreign_keys = ON");
 
+  // Migrate check constraint first if needed, before starting the main transaction
+  try {
+    const tableCheck = await client.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'");
+    if (tableCheck.rows.length > 0) {
+      const convTableSqlResult = await client.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='conversations'");
+      const convSql = (convTableSqlResult.rows[0]?.sql as string) || "";
+      if (convSql && !convSql.includes("'hold'")) {
+        console.log("[migrate] Migrating conversations table status check constraint to include 'hold'...");
+        await client.execute("PRAGMA foreign_keys = OFF");
+        await client.execute("ALTER TABLE conversations RENAME TO conversations_old");
+        await client.execute(`
+          CREATE TABLE conversations (
+            id TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+            wa_number TEXT NOT NULL,
+            customer_name TEXT,
+            status TEXT NOT NULL DEFAULT 'bot' CHECK(status IN ('bot','waiting','active','resolved','hold')),
+            claimed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+            rating INTEGER,
+            review TEXT,
+            warning_sent INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        `);
+        await client.execute(`
+          INSERT INTO conversations (id, customer_id, wa_number, customer_name, status, claimed_by, rating, review, warning_sent, created_at, updated_at)
+          SELECT id, customer_id, wa_number, customer_name, status, claimed_by, rating, review, 0, created_at, updated_at FROM conversations_old
+        `);
+        await client.execute("DROP TABLE conversations_old");
+        await client.execute("CREATE INDEX IF NOT EXISTS idx_conversations_status_updated ON conversations(status, updated_at DESC)");
+        await client.execute("PRAGMA foreign_keys = ON");
+        console.log("[migrate] Conversations table check constraint updated successfully.");
+      }
+    }
+  } catch (err) {
+    console.error("[migrate] Check constraint migration failed:", err);
+    throw err;
+  }
+
   await client.execute("BEGIN TRANSACTION");
   try {
     for (const sql of MIGRATIONS.slice(3)) {
@@ -180,6 +222,8 @@ async function run() {
     await addColumnIfNotExists("cs_config", "wa_group_jid", "TEXT NOT NULL DEFAULT ''");
     await addColumnIfNotExists("messages", "reply_to_content", "TEXT");
     await addColumnIfNotExists("messages", "reply_to_sender", "TEXT");
+    await addColumnIfNotExists("bot_config", "session_timeout_warning_mins", "INTEGER NOT NULL DEFAULT 5");
+    await addColumnIfNotExists("conversations", "warning_sent", "INTEGER NOT NULL DEFAULT 0");
 
     await client.execute("COMMIT");
     console.log("[migrate] Done.");

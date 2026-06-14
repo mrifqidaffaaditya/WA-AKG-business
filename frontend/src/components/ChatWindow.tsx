@@ -18,6 +18,8 @@ import {
   ArrowLeft,
   Clock,
   CornerUpLeft,
+  Play,
+  Pause,
 } from "lucide-react";
 
 interface Message {
@@ -39,7 +41,7 @@ interface Conversation {
   id: string;
   wa_number: string;
   customer_name: string | null;
-  status: "bot" | "waiting" | "active" | "resolved";
+  status: "bot" | "waiting" | "active" | "resolved" | "hold";
   claimed_by: string | null;
   claimed_by_name?: string | null;
   total_sessions?: number;
@@ -56,6 +58,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   active: { label: "Active", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
   resolved: { label: "Selesai", color: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
   bot: { label: "Bot", color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  hold: { label: "On Hold", color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
 };
 
 function avatarGradient(name: string): string {
@@ -98,6 +101,28 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   const [claimLoading, setClaimLoading] = useState(false);
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [holdLoading, setHoldLoading] = useState(false);
+
+  const handleHoldToggle = async () => {
+    if (!conversation) return;
+    setHoldLoading(true);
+    const action = conversation.status === "hold" ? "unhold" : "hold";
+    try {
+      const res = await apiFetch(`/api/conversations/${conversation.id}/${action}`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Toggle hold failed");
+    } catch {
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Gagal mengubah status hold percakapan",
+        type: "error",
+      });
+    } finally {
+      setHoldLoading(false);
+    }
+  };
 
   const messageContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -380,7 +405,8 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
     );
   }
 
-  const isOwnClaim = conversation.status === "active" && conversation.claimed_by === user?.id;
+  const isClaimedByMe = conversation.claimed_by === user?.id;
+  const isOwnActiveOrHold = (conversation.status === "active" || conversation.status === "hold") && isClaimedByMe;
   const st = statusConfig[conversation.status] || statusConfig.bot;
   const displayName = conversation.customer_name || formatPhone(conversation.wa_number);
 
@@ -420,7 +446,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
           </div>
           <div className="text-[10px] text-slate-400 truncate">
             {formatPhone(conversation.wa_number)}
-            {conversation.status === "active" && conversation.claimed_by && (
+            {(conversation.status === "active" || conversation.status === "hold") && conversation.claimed_by && (
               <span className="ml-1.5 text-[9px] text-emerald-400/80">
                 {conversation.claimed_by === user?.id
                   ? " (Anda)"
@@ -441,9 +467,28 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
               <span className="hidden sm:inline">Claim</span>
             </button>
           )}
+          {(conversation.status === "active" || conversation.status === "hold") &&
+            (isClaimedByMe || user?.role !== "cs") && (
+              <button
+                onClick={handleHoldToggle}
+                disabled={holdLoading}
+                className={
+                  "flex items-center gap-1 rounded-lg px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition-all duration-200 disabled:opacity-50 active:scale-95 cursor-pointer " +
+                  (conversation.status === "hold"
+                    ? "bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg shadow-emerald-500/20"
+                    : "bg-slate-800/80 border border-slate-700 text-slate-300 hover:bg-orange-500/10 hover:text-orange-400 hover:border-orange-500/20")
+                }
+              >
+                {conversation.status === "hold" ? <Play size={14} /> : <Pause size={14} />}
+                <span className="hidden sm:inline">
+                  {conversation.status === "hold" ? "Resume" : "Hold"}
+                </span>
+              </button>
+            )}
           {(conversation.status === "active" ||
+            conversation.status === "hold" ||
             conversation.status === "waiting") &&
-            (isOwnClaim || user?.role !== "cs") && (
+            (isOwnActiveOrHold || user?.role !== "cs") && (
               <button
                 onClick={() => setResolveModal(true)}
                 className="flex items-center gap-1 rounded-lg bg-slate-800/80 border border-slate-700 px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-slate-300 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all duration-200 cursor-pointer"
@@ -554,7 +599,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                 key={msg.id}
                 className={
                   "flex w-full animate-bubble-in group items-center gap-2 " +
-                  (isCustomer || isBot ? "justify-start flex-row" : "justify-end flex-row-reverse")
+                  (isCustomer || isBot ? "justify-start flex-row" : "justify-start flex-row-reverse")
                 }
               >
                 <div className="flex flex-col max-w-[85%] sm:max-w-[70%]">

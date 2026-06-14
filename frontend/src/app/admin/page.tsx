@@ -507,6 +507,7 @@ function BotConfigPanel() {
     business_info: string;
     escalation_keywords: string;
     session_timeout_mins: number | "";
+    session_timeout_warning_mins: number | "";
     auto_close_enabled: boolean;
   }>({
     persona_name: "",
@@ -514,6 +515,7 @@ function BotConfigPanel() {
     business_info: "",
     escalation_keywords: "",
     session_timeout_mins: 30,
+    session_timeout_warning_mins: 5,
     auto_close_enabled: false,
   });
   const [loading, setLoading] = useState(true);
@@ -536,6 +538,7 @@ function BotConfigPanel() {
           business_info: config.business_info || "",
           escalation_keywords: config.escalation_keywords || "",
           session_timeout_mins: config.session_timeout_mins ?? 30,
+          session_timeout_warning_mins: config.session_timeout_warning_mins ?? 5,
           auto_close_enabled: config.auto_close_enabled ?? false,
         });
       })
@@ -550,18 +553,26 @@ function BotConfigPanel() {
         ? form.session_timeout_mins
         : 30;
 
+      const warningVal = typeof form.session_timeout_warning_mins === "number" && form.session_timeout_warning_mins >= 0
+        ? form.session_timeout_warning_mins
+        : 5;
+
       const payload = {
         ...form,
         session_timeout_mins: timeoutVal,
+        session_timeout_warning_mins: warningVal,
       };
 
       const res = await apiFetch("/api/admin/bot-config", {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Gagal menyimpan");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Gagal menyimpan");
+      }
       
-      setForm((f) => ({ ...f, session_timeout_mins: timeoutVal }));
+      setForm((f) => ({ ...f, session_timeout_mins: timeoutVal, session_timeout_warning_mins: warningVal }));
 
       setModal({
         isOpen: true,
@@ -569,11 +580,11 @@ function BotConfigPanel() {
         message: "Konfigurasi bot berhasil disimpan",
         type: "success",
       });
-    } catch {
+    } catch (err: any) {
       setModal({
         isOpen: true,
         title: "Error",
-        message: "Gagal menyimpan konfigurasi bot",
+        message: err.message || "Gagal menyimpan konfigurasi bot",
         type: "error",
       });
     } finally {
@@ -657,7 +668,7 @@ function BotConfigPanel() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">
               Session Timeout (menit)
@@ -677,7 +688,26 @@ function BotConfigPanel() {
               className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
             />
           </div>
-          <div className="flex flex-col justify-end pb-1">
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">
+              Peringatan Timeout (menit sebelum close)
+            </label>
+            <input
+              type="number"
+              value={form.session_timeout_warning_mins}
+              onChange={(e) => {
+                const val = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  session_timeout_warning_mins: val === "" ? "" : parseInt(val) || 0,
+                }));
+              }}
+              min={0}
+              max={1440}
+              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+            />
+          </div>
+          <div className="flex flex-col justify-end pb-1 col-span-2 sm:col-span-1">
             <label className="text-xs font-medium text-slate-400 mb-2 block">
               Auto Close
             </label>

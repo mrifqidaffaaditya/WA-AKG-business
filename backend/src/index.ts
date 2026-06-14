@@ -10,6 +10,7 @@ import { initGateway } from "./services/gateway.js";
 import { startStockSync, stopStockSync } from "./services/stock.js";
 import { startUploadCleanup, stopUploadCleanup } from "./services/uploadCleanup.js";
 import { startDashboardPeriodic } from "./services/dashboard.js";
+import { startSessionTimeoutCheck, stopSessionTimeoutCheck } from "./services/sessionTimeout.js";
 import { apiRateLimitPassthrough } from "./middleware/rateLimit.js";
 import { authenticate } from "./middleware/auth.js";
 import { verifyAccessToken } from "./services/auth.js";
@@ -110,11 +111,13 @@ httpServer.listen(config.port, () => {
 startStockSync();
 startUploadCleanup();
 startDashboardPeriodic();
+startSessionTimeoutCheck();
 
 process.on("SIGTERM", () => {
   logger.info("[server] SIGTERM received, shutting down...");
   stopStockSync();
   stopUploadCleanup();
+  stopSessionTimeoutCheck();
   httpServer.close(() => process.exit(0));
 });
 
@@ -122,6 +125,7 @@ process.on("SIGINT", () => {
   logger.info("[server] SIGINT received, shutting down...");
   stopStockSync();
   stopUploadCleanup();
+  stopSessionTimeoutCheck();
   httpServer.close(() => process.exit(0));
 });
 

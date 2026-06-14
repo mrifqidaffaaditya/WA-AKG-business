@@ -8,7 +8,7 @@ interface Conversation {
   id: string;
   wa_number: string;
   customer_name: string | null;
-  status: "bot" | "waiting" | "active" | "resolved";
+  status: "bot" | "waiting" | "active" | "resolved" | "hold";
   claimed_by: string | null;
   claimed_by_name?: string | null;
   updated_at: string;
@@ -35,6 +35,7 @@ const statusConfig: Record<string, { label: string; color: string; dot: string }
   active: { label: "Active", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-400" },
   bot: { label: "Bot", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", dot: "bg-blue-400" },
   resolved: { label: "Selesai", color: "bg-slate-500/10 text-slate-400 border-slate-500/20", dot: "bg-slate-500" },
+  hold: { label: "On Hold", color: "bg-orange-500/10 text-orange-400 border-orange-500/20", dot: "bg-orange-400" },
 };
 
 function avatarGradient(name: string): string {

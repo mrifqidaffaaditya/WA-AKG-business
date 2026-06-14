@@ -19,6 +19,7 @@ const ALLOWED_BOT_CONFIG_FIELDS = [
   "business_info",
   "escalation_keywords",
   "session_timeout_mins",
+  "session_timeout_warning_mins",
   "auto_close_enabled",
 ];
 
@@ -29,6 +30,9 @@ function validateBotConfigFields(body: Record<string, unknown>): string | null {
   }
   if (body.session_timeout_mins !== undefined && (typeof body.session_timeout_mins !== "number" || body.session_timeout_mins < 1)) {
     return "session_timeout_mins must be a positive number";
+  }
+  if (body.session_timeout_warning_mins !== undefined && (typeof body.session_timeout_warning_mins !== "number" || body.session_timeout_warning_mins < 0)) {
+    return "session_timeout_warning_mins must be a non-negative number";
   }
   if (body.auto_close_enabled !== undefined && typeof body.auto_close_enabled !== "boolean") {
     return "auto_close_enabled must be a boolean";
@@ -89,8 +93,18 @@ router.put("/bot-config", async (req: AuthRequest, res) => {
       business_info,
       escalation_keywords,
       session_timeout_mins,
+      session_timeout_warning_mins,
       auto_close_enabled,
     } = req.body;
+
+    // Validate relationship: warning mins must be less than timeout mins
+    const finalTimeoutMins = session_timeout_mins !== undefined ? session_timeout_mins : existing[0].session_timeout_mins;
+    const finalWarningMins = session_timeout_warning_mins !== undefined ? session_timeout_warning_mins : existing[0].session_timeout_warning_mins;
+
+    if (finalWarningMins >= finalTimeoutMins && finalWarningMins > 0) {
+      res.status(400).json({ error: "Waktu peringatan harus lebih kecil dari waktu timeout sesi" });
+      return;
+    }
 
     const updates: Record<string, unknown> = {
       updated_by: req.user!.sub,
@@ -106,6 +120,7 @@ router.put("/bot-config", async (req: AuthRequest, res) => {
         : escalation_keywords;
     }
     if (session_timeout_mins !== undefined) updates.session_timeout_mins = session_timeout_mins;
+    if (session_timeout_warning_mins !== undefined) updates.session_timeout_warning_mins = session_timeout_warning_mins;
     if (auto_close_enabled !== undefined) updates.auto_close_enabled = auto_close_enabled;
 
     await db

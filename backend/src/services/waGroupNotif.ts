@@ -52,3 +52,9 @@ export async function notifyResolve(customerName: string, csName: string, rating
   const msg = `[${timestamp()}] ✅ *Chat Diselesaikan*\n👤 Pelanggan: ${customerName}\n🧑‍💼 CS: ${csName}\n${ratingStr}\n🔗 ${url}`;
   await sendWaGroupNotif(msg);
 }
+
+export async function notifyReactivate(customerName: string, csName: string, convId: string): Promise<void> {
+  const url = `${config.frontendUrl}/cs/${convId}?tab=all`;
+  const msg = `[${timestamp()}] 🔄 *Sesi Diaktifkan Kembali*\n👤 Pelanggan: ${customerName}\n🧑‍💼 CS: ${csName}\n🔗 ${url}`;
+  await sendWaGroupNotif(msg);
+}

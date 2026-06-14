@@ -18,7 +18,7 @@ import { generateAndSaveSummary } from "../services/orchestrator.js";
 import { logger } from "../utils/logger.js";
 import { sendNotificationToUser } from "../services/notifications.js";
 import { getCsConfig } from "../services/csConfig.js";
-import { notifyClaim, notifyResolve } from "../services/waGroupNotif.js";
+import { notifyClaim, notifyResolve, notifyReactivate } from "../services/waGroupNotif.js";
 import { createAuditLog } from "../utils/audit.js";
 import { db, schema } from "../db/index.js";
 import { eq } from "drizzle-orm";
@@ -137,7 +137,7 @@ router.post("/:id/messages", async (req: AuthRequest, res: Response) => {
 
       createAuditLog({
         userId: user.sub,
-        action: "claim_conversation",
+        action: "reactivate_conversation",
         entityType: "conversations",
         entityId: id,
         details: JSON.stringify({ customer: conv.customer_name || conv.wa_number }),
@@ -146,8 +146,8 @@ router.post("/:id/messages", async (req: AuthRequest, res: Response) => {
       const csUserRows = await db.select().from(schema.users).where(eq(schema.users.id, user.sub)).limit(1);
       const csUser = csUserRows[0];
       const csName = csUser?.name || "CS";
-      notifyClaim(conv.customer_name || conv.wa_number, csName, id).catch((err) =>
-        logger.warn("[conversations] Claim notification failed:", err)
+      notifyReactivate(conv.customer_name || conv.wa_number, csName, id).catch((err) =>
+        logger.warn("[conversations] Reactivate notification failed:", err)
       );
 
       convStatus = "active";
@@ -482,6 +482,84 @@ router.post("/:id/resolve", requireConversationAccess, async (req: AuthRequest, 
     res.json(updated);
   } catch (err) {
     logger.error("[conversations] Resolve error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:id/hold", async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const user = getUser(req);
+    const conv = await getConversation(id);
+    if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+    if (conv.status !== "active") {
+      res.status(400).json({ error: "Only active conversations can be put on hold" });
+      return;
+    }
+    if (user.role === "cs" && conv.claimed_by !== user.sub) {
+      res.status(403).json({ error: "You can only hold your claimed conversations" });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    await db
+      .update(schema.conversations)
+      .set({ status: "hold", updated_at: now })
+      .where(eq(schema.conversations.id, id));
+
+    broadcast("conversation:status", { conversationId: id, status: "hold", claimedBy: conv.claimed_by });
+    requestDashboardBroadcast();
+
+    createAuditLog({
+      userId: user.sub,
+      action: "hold_conversation",
+      entityType: "conversations",
+      entityId: id,
+      details: JSON.stringify({ customer: conv.customer_name || conv.wa_number }),
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    logger.error("[conversations] Hold error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:id/unhold", async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const user = getUser(req);
+    const conv = await getConversation(id);
+    if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+    if (conv.status !== "hold") {
+      res.status(400).json({ error: "Only hold conversations can be activated" });
+      return;
+    }
+    if (user.role === "cs" && conv.claimed_by !== user.sub) {
+      res.status(403).json({ error: "You can only activate your claimed conversations" });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    await db
+      .update(schema.conversations)
+      .set({ status: "active", updated_at: now })
+      .where(eq(schema.conversations.id, id));
+
+    broadcast("conversation:status", { conversationId: id, status: "active", claimedBy: conv.claimed_by });
+    requestDashboardBroadcast();
+
+    createAuditLog({
+      userId: user.sub,
+      action: "unhold_conversation",
+      entityType: "conversations",
+      entityId: id,
+      details: JSON.stringify({ customer: conv.customer_name || conv.wa_number }),
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    logger.error("[conversations] Unhold error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
