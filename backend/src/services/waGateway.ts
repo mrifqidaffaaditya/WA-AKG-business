@@ -10,7 +10,6 @@ import {
   downloadMediaMessage,
   AnyMessageContent,
   delay,
-  makeInMemoryStore,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
@@ -20,23 +19,23 @@ import { EventEmitter } from "events";
 
 export const waEvents = new EventEmitter();
 
-export const store = makeInMemoryStore({
-  logger: logger.child({ stream: "store" }) as any
-});
-
-// Load initial store
-try {
-  store.readFromFile(`${config.wa.sessionPath}/baileys_store.json`);
-} catch {}
-
-// Save store every 30s
-setInterval(() => {
-  try {
-    store.writeToFile(`${config.wa.sessionPath}/baileys_store.json`);
-  } catch (err) {
-    logger.error("[wa] Failed to save store to file:", err);
+// Custom in-memory message store for retry decrypting
+class InMemoryMessageStore {
+  private messages = new Map<string, proto.IMessage>();
+  
+  public set(remoteJid: string, id: string, message: proto.IMessage) {
+    this.messages.set(`${remoteJid}:${id}`, message);
+    if (this.messages.size > 2000) {
+      const firstKey = this.messages.keys().next().value;
+      if (firstKey) this.messages.delete(firstKey);
+    }
   }
-}, 30000);
+  
+  public get(remoteJid: string, id: string): proto.IMessage | undefined {
+    return this.messages.get(`${remoteJid}:${id}`);
+  }
+}
+const localMessageStore = new InMemoryMessageStore();
 
 class SimpleCache {
   private map = new Map<string, number>();
@@ -100,9 +99,9 @@ export async function connectWa(): Promise<void> {
     browser: ["WA-AKG", "Chrome", "1.0"],
     msgRetryCounterCache,
     getMessage: async (key) => {
-      if (store) {
-        const msg = await store.loadMessage(key.remoteJid!, key.id!);
-        if (msg) return msg.message || undefined;
+      if (key.remoteJid && key.id) {
+        const msg = localMessageStore.get(key.remoteJid, key.id);
+        if (msg) return msg;
       }
       // Fallback: lookup in database
       try {
@@ -126,8 +125,6 @@ export async function connectWa(): Promise<void> {
       return undefined;
     },
   });
-
-  store.bind(sock.ev);
 
   sock.ev.on("creds.update", saveCreds);
 
@@ -173,6 +170,9 @@ export async function connectWa(): Promise<void> {
 
   sock.ev.on("messages.upsert", async (m) => {
     for (const msg of m.messages) {
+      if (msg.key.remoteJid && msg.key.id && msg.message) {
+        localMessageStore.set(msg.key.remoteJid, msg.key.id, msg.message);
+      }
       if (m.type === "notify") {
         waEvents.emit("message", msg);
       }
@@ -218,7 +218,11 @@ export async function sendWaMessage(
       targetJid = getJid(jid);
     }
   }
-  return sock.sendMessage(targetJid, content);
+  const result = await sock.sendMessage(targetJid, content);
+  if (result && result.key.remoteJid && result.key.id && result.message) {
+    localMessageStore.set(result.key.remoteJid, result.key.id, result.message);
+  }
+  return result;
 }
 
 export async function downloadWaMedia(
