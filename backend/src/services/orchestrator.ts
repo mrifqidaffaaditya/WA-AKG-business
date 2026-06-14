@@ -9,6 +9,8 @@ import {
   getQueueCount,
   getConversation,
   getMessages,
+  getLatestConversation,
+  updateConversationRating,
 } from "./conversation.js";
 import { generateBotResponse, detectEscalation, generateSummary } from "./chatbot.js";
 import { emitToUser, emitToRole, broadcast } from "../ws/index.js";
@@ -80,6 +82,23 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
   });
 
   let activeConv = await findActiveConversation(customer.id);
+
+  const content = extractMessageText(msg);
+
+  // If there's no active conversation, check if it's a rating response
+  if (!activeConv && content && /^[1-5]$/.test(content.trim())) {
+    const lastConv = await getLatestConversation(customer.id);
+    if (lastConv && lastConv.status === "resolved" && !lastConv.rating) {
+      const ratingNum = parseInt(content.trim(), 10);
+      await updateConversationRating(lastConv.id, ratingNum);
+      try {
+        await sendWaMessage(jid, { text: "Terima kasih atas penilaian Anda!" });
+      } catch (err) {
+        logger.error("[orchestrator] Failed to send rating thanks", err);
+      }
+      return;
+    }
+  }
 
   if (!activeConv) {
     activeConv = await createConversation({

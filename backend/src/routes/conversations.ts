@@ -16,10 +16,22 @@ import { emitToUser, emitToRole, broadcast } from "../ws/index.js";
 import { generateAndSaveSummary } from "../services/orchestrator.js";
 import { logger } from "../utils/logger.js";
 import { sendNotificationToUser } from "../services/notifications.js";
+import { getCsConfig } from "../services/csConfig.js";
+import { db, schema } from "../db/index.js";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
 router.use(authenticate);
+
+router.get("/cs-config", async (_req, res) => {
+  try {
+    const config = getCsConfig();
+    res.json(config);
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.get("/", async (req: AuthRequest, res) => {
   try {
@@ -87,17 +99,27 @@ router.post("/:id/messages", async (req, res) => {
       await claimConversation(req.params.id, req.user.sub);
     }
 
+    const csUserRows = await db.select().from(schema.users).where(eq(schema.users.id, req.user!.sub)).limit(1);
+    const csUser = csUserRows[0];
+    
+    let finalContent = content;
+    const csConfig = getCsConfig();
+    if (csConfig.signatureEnabled && csConfig.signatureTemplate && csUser && finalContent) {
+      const footer = csConfig.signatureTemplate.replace("{name}", csUser.name);
+      finalContent = `${finalContent}\n\n${footer}`;
+    }
+
     const msg = await addMessage({
       conversationId: req.params.id,
       sender: "cs",
-      csId: req.user.sub,
-      content: content,
+      csId: req.user!.sub,
+      content: finalContent,
       contentType: contentType || "text",
       mediaUrl: mediaUrl,
     });
 
     try {
-      const waContent: any = { text: content };
+      const waContent: any = { text: finalContent };
       if (contentType === "image" && mediaUrl) {
         waContent.image = { url: mediaUrl };
         waContent.caption = content;
@@ -110,8 +132,9 @@ router.post("/:id/messages", async (req, res) => {
       logger.error("[conversations] WA send error:", waErr);
     }
 
-    broadcast("conversation:message", { conversationId: req.params.id, message: msg });
-    res.status(201).json(msg);
+    const messageWithCsName = { ...msg, cs_name: csUser?.name || null };
+    broadcast("conversation:message", { conversationId: req.params.id, message: messageWithCsName });
+    res.status(201).json(messageWithCsName);
   } catch (err) {
     logger.error("[conversations] Message error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -138,6 +161,29 @@ router.post("/:id/claim", async (req, res) => {
 
     const queueCount = await getQueueCount();
     broadcast("queue:update", { count: queueCount });
+
+    // Send Auto Reply Claim
+    const csUserRows = await db.select().from(schema.users).where(eq(schema.users.id, req.user!.sub)).limit(1);
+    const csUser = csUserRows[0];
+    const csConfig = getCsConfig();
+    
+    if (csConfig.autoReplyClaimEnabled && csConfig.autoReplyClaim) {
+      const claimMessage = csConfig.autoReplyClaim.replace("{name}", csUser?.name || "CS");
+      const msg = await addMessage({
+        conversationId: req.params.id,
+        sender: "cs",
+        csId: req.user!.sub,
+        content: claimMessage,
+        contentType: "text",
+      });
+      try {
+        await sendWaMessage(conv.wa_number, { text: claimMessage });
+      } catch (err) {
+        logger.error("[conversations] Failed to send auto reply claim:", err);
+      }
+      const messageWithCsName = { ...msg, cs_name: csUser?.name || null };
+      broadcast("conversation:message", { conversationId: req.params.id, message: messageWithCsName });
+    }
 
     res.json(updated);
   } catch (err) {
@@ -187,6 +233,29 @@ router.post("/:id/resolve", async (req: AuthRequest, res) => {
 
     broadcast("conversation:status", { conversationId: req.params.id, status: "resolved" });
     broadcast("queue:update", { count: await getQueueCount() });
+
+    // Send Auto Reply Resolve
+    const csUserRows = await db.select().from(schema.users).where(eq(schema.users.id, req.user!.sub)).limit(1);
+    const csUser = csUserRows[0];
+    const csConfig = getCsConfig();
+    
+    if (csConfig.autoReplyResolveEnabled && csConfig.autoReplyResolve) {
+      const resolveMessage = csConfig.autoReplyResolve.replace("{name}", csUser?.name || "CS");
+      const msg = await addMessage({
+        conversationId: req.params.id,
+        sender: "cs",
+        csId: req.user!.sub,
+        content: resolveMessage,
+        contentType: "text",
+      });
+      try {
+        await sendWaMessage(conv.wa_number, { text: resolveMessage });
+      } catch (err) {
+        logger.error("[conversations] Failed to send auto reply resolve:", err);
+      }
+      const messageWithCsName = { ...msg, cs_name: csUser?.name || null };
+      broadcast("conversation:message", { conversationId: req.params.id, message: messageWithCsName });
+    }
 
     res.json(updated);
   } catch (err) {

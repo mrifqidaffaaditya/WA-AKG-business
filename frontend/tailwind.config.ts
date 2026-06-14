@@ -25,6 +25,7 @@ const config: Config = {
         fadeIn: "fadeIn 0.2s ease-out",
         scaleUp: "scaleUp 0.2s ease-out",
         slideUp: "slideUp 0.3s ease-out",
+        "spin-slow": "spin-slow 1.5s linear infinite",
       },
       keyframes: {
         fadeIn: {
@@ -38,6 +39,10 @@ const config: Config = {
         slideUp: {
           "0%": { transform: "translateY(10px)", opacity: "0" },
           "100%": { transform: "translateY(0)", opacity: "1" },
+        },
+        "spin-slow": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(360deg)" },
         },
       },
     },

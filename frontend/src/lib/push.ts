@@ -58,15 +58,21 @@ export async function setupPushNotifications(): Promise<void> {
 
 export function showBrowserNotification(title: string, body: string, data?: Record<string, unknown>) {
   if (!("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
-  if (document.visibilityState === "visible") return;
+  if (Notification.permission !== "granted") {
+    Notification.requestPermission();
+    return;
+  }
 
-  const notification = new Notification(title, { body, data, icon: "/icon-192.png" });
-  notification.onclick = () => {
-    window.focus();
-    notification.close();
-    if (data?.url) {
-      window.location.href = data.url as string;
-    }
-  };
+  try {
+    const notification = new Notification(title, { body, data, icon: "/icon-192.png" });
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+      if (data?.url) {
+        window.location.href = data.url as string;
+      }
+    };
+  } catch (err) {
+    console.warn("Failed to show notification:", err);
+  }
 }

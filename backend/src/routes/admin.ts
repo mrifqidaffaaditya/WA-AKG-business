@@ -8,6 +8,7 @@ import { hashPassword, revokeAllUserTokens } from "../services/auth.js";
 import { createAuditLog } from "../utils/audit.js";
 import { previewStock, clearStockCache, syncStockNow } from "../services/stock.js";
 import { logger } from "../utils/logger.js";
+import { getCsConfig, updateCsConfig } from "../services/csConfig.js";
 
 const router = Router();
 
@@ -74,6 +75,35 @@ router.put("/bot-config", async (req: AuthRequest, res) => {
     res.json(updated[0]);
   } catch (err) {
     logger.error("[admin] Bot config error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── CS Config ─────────────────────────────────────────────────
+
+router.get("/cs-config", async (_req, res) => {
+  try {
+    const config = getCsConfig();
+    res.json(config);
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/cs-config", async (req: AuthRequest, res) => {
+  try {
+    const updated = updateCsConfig(req.body);
+    
+    await createAuditLog({
+      userId: req.user!.sub,
+      action: "update_cs_config",
+      entityType: "cs_config",
+      entityId: "system",
+    });
+
+    res.json(updated);
+  } catch (err) {
+    logger.error("[admin] CS config error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

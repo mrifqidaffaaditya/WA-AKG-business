@@ -118,15 +118,48 @@ ${stockContext}
         { role: "system", content: systemPrompt },
         { role: "user", content: customerMessage },
       ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "transfer_to_cs",
+            description: "Panggil fungsi ini jika customer secara eksplisit meminta berbicara dengan CS, admin, manusia, atau jika mereka marah/komplain dan masalahnya di luar kemampuan Anda.",
+            parameters: {
+              type: "object",
+              properties: {},
+            },
+          },
+        },
+      ],
       max_tokens: config.ai.maxTokens,
       temperature: 0.7,
     });
 
-    const response =
-      completion.choices[0]?.message?.content ||
-      "Maaf, saya tidak dapat memproses permintaan Anda saat ini.";
+    const msg = completion.choices[0]?.message;
+    
+    let aiRequestedEscalation = false;
+    let response = msg?.content || "";
 
-    return { response, shouldEscalate };
+    if (msg?.tool_calls && msg.tool_calls.length > 0) {
+      for (const call of msg.tool_calls) {
+        if (call.type === "function" && call.function.name === "transfer_to_cs") {
+          aiRequestedEscalation = true;
+        }
+      }
+      
+      // If AI decided to escalate but didn't provide a text response, provide a default one
+      if (!response && aiRequestedEscalation) {
+        response = "Baik, saya akan menghubungkan Anda dengan Customer Service kami. Mohon tunggu sebentar ya.";
+      }
+    }
+
+    if (!response) {
+      response = "Maaf, saya tidak dapat memproses permintaan Anda saat ini.";
+    }
+
+    const finalShouldEscalate = shouldEscalate || aiRequestedEscalation;
+
+    return { response, shouldEscalate: finalShouldEscalate };
   } catch (err) {
     logger.error("[chatbot] AI error:", err);
     return {

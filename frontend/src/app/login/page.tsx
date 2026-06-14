@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, ArrowRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function LoginPage() {
@@ -10,7 +10,10 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-slate-950">
-          <div className="text-slate-500 animate-pulse">Memuat...</div>
+          <div className="flex items-center gap-3 text-slate-500">
+            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <span className="text-sm">Memuat...</span>
+          </div>
         </div>
       }
     >
@@ -25,7 +28,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading2, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!loading && user) {
@@ -36,7 +39,10 @@ function LoginForm() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
-        <div className="text-slate-500 animate-pulse">Memuat...</div>
+        <div className="flex items-center gap-3 text-slate-500">
+          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <span className="text-sm">Memuat...</span>
+        </div>
       </div>
     );
   }
@@ -44,7 +50,10 @@ function LoginForm() {
   if (user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
-        <div className="text-slate-500 animate-pulse">Mengalihkan...</div>
+        <div className="flex items-center gap-3 text-slate-500">
+          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <span className="text-sm">Mengalihkan...</span>
+        </div>
       </div>
     );
   }
@@ -52,56 +61,57 @@ function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setLoading(true);
+    setSubmitting(true);
 
     try {
       await login(email, password);
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Login gagal. Coba lagi."
-      );
+      setError(err instanceof Error ? err.message : "Login gagal. Coba lagi.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
-      <div className="w-full max-w-sm animate-scaleUp">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 px-4">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.04),transparent_50%)]" />
+
+      <div className="relative w-full max-w-md animate-scaleUp">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 flex items-center justify-center mx-auto mb-4">
-            <MessageCircle size={28} className="text-emerald-400" />
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/10 flex items-center justify-center mx-auto mb-5 shadow-[0_0_30px_rgba(16,185,129,0.08)]">
+            <MessageCircle size={26} className="text-emerald-400" />
           </div>
-          <h1 className="text-xl font-bold text-slate-100">WA-AKG Business</h1>
-          <p className="text-sm text-slate-500 mt-1">WhatsApp CS Management</p>
+          <h1 className="text-xl font-bold text-slate-100 tracking-tight">
+            WA-AKG Business
+          </h1>
+          <p className="text-sm text-slate-500 mt-1.5">
+            WhatsApp Customer Service Management
+          </p>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-lg shadow-black/20">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="email"
-                className="block text-xs text-slate-400 mb-1.5"
-              >
+              <label htmlFor="email" className="block text-xs font-medium text-slate-400 mb-1.5">
                 Email
               </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@example.com"
-                required
-                autoComplete="email"
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors"
-              />
+              <div className="relative">
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@example.com"
+                  required
+                  autoComplete="email"
+                  autoFocus
+                  className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                />
+              </div>
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-xs text-slate-400 mb-1.5"
-              >
+              <label htmlFor="password" className="block text-xs font-medium text-slate-400 mb-1.5">
                 Password
               </label>
               <input
@@ -112,25 +122,40 @@ function LoginForm() {
                 placeholder="••••••••"
                 required
                 autoComplete="current-password"
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors"
+                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
               />
             </div>
 
             {error && (
-              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2.5">
-                <p className="text-xs text-red-400">{error}</p>
+              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3.5 py-3 flex items-start gap-2.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 shrink-0" />
+                <p className="text-xs text-red-400 leading-relaxed">{error}</p>
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loading2}
-              className="w-full rounded-lg bg-emerald-500 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={submitting}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-500 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading2 ? "Masuk..." : "Masuk"}
+              {submitting ? (
+                <>
+                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  Masuk...
+                </>
+              ) : (
+                <>
+                  Masuk
+                  <ArrowRight size={16} />
+                </>
+              )}
             </button>
           </form>
         </div>
+
+        <p className="text-center mt-6 text-[11px] text-slate-600">
+          WA-AKG Business &copy; {new Date().getFullYear()}
+        </p>
       </div>
     </div>
   );

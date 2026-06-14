@@ -99,13 +99,22 @@ export async function findActiveConversation(
 
 export async function getConversation(
   id: string
-): Promise<typeof schema.conversations.$inferSelect | null> {
+): Promise<(typeof schema.conversations.$inferSelect & { claimed_by_name?: string | null }) | null> {
   const rows = await db
-    .select()
+    .select({
+      conversation: schema.conversations,
+      claimed_by_name: schema.users.name,
+    })
     .from(schema.conversations)
+    .leftJoin(schema.users, eq(schema.conversations.claimed_by, schema.users.id))
     .where(eq(schema.conversations.id, id))
     .limit(1);
-  return rows.length > 0 ? rows[0] : null;
+  
+  if (rows.length === 0) return null;
+  return {
+    ...rows[0].conversation,
+    claimed_by_name: rows[0].claimed_by_name,
+  };
 }
 
 export async function updateConversationStatus(
@@ -116,6 +125,30 @@ export async function updateConversationStatus(
   await db
     .update(schema.conversations)
     .set({ status, updated_at: now })
+    .where(eq(schema.conversations.id, id));
+}
+
+export async function getLatestConversation(
+  customerId: string
+): Promise<typeof schema.conversations.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(schema.conversations)
+    .where(eq(schema.conversations.customer_id, customerId))
+    .orderBy(desc(schema.conversations.created_at))
+    .limit(1);
+
+  return rows.length > 0 ? rows[0] : null;
+}
+
+export async function updateConversationRating(
+  id: string,
+  rating: number
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db
+    .update(schema.conversations)
+    .set({ rating, updated_at: now })
     .where(eq(schema.conversations.id, id));
 }
 
@@ -247,15 +280,19 @@ export async function getMessages(params: {
   limit?: number;
   direction?: "older" | "newer";
 }): Promise<{
-  messages: (typeof schema.messages.$inferSelect)[];
+  messages: (typeof schema.messages.$inferSelect & { cs_name?: string | null })[];
   nextCursor: string | null;
   hasMore: boolean;
 }> {
   const limit = params.limit || 30;
 
   let query = db
-    .select()
+    .select({
+      message: schema.messages,
+      cs_name: schema.users.name,
+    })
     .from(schema.messages)
+    .leftJoin(schema.users, eq(schema.messages.cs_id, schema.users.id))
     .where(eq(schema.messages.conversation_id, params.conversationId));
 
   if (params.cursor) {
@@ -268,7 +305,11 @@ export async function getMessages(params: {
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
-  const messages = rows.slice(0, limit).reverse();
+  const messagesRaw = rows.slice(0, limit).reverse();
+  const messages = messagesRaw.map(row => ({
+    ...row.message,
+    cs_name: row.cs_name,
+  }));
 
   let nextCursor: string | null = null;
   if (hasMore && messages.length > 0) {
@@ -284,7 +325,7 @@ export async function getConversations(params: {
   status?: ConversationStatus;
   claimedBy?: string;
 }): Promise<{
-  conversations: (typeof schema.conversations.$inferSelect)[];
+  conversations: (typeof schema.conversations.$inferSelect & { claimed_by_name?: string | null })[];
   nextCursor: string | null;
   hasMore: boolean;
 }> {
@@ -304,17 +345,29 @@ export async function getConversations(params: {
     conditions.push(lt(schema.conversations.updated_at, params.cursor));
   }
 
-  let query = db.select().from(schema.conversations);
+  let query = db
+    .select({
+      conversation: schema.conversations,
+      claimed_by_name: schema.users.name,
+    })
+    .from(schema.conversations)
+    .leftJoin(schema.users, eq(schema.conversations.claimed_by, schema.users.id));
+
   if (conditions.length > 0) {
-    query = query.where(and(...conditions));
+    query = query.where(and(...conditions)) as any;
   }
 
   const rows = await query
     .orderBy(desc(schema.conversations.updated_at))
     .limit(limit + 1);
 
-  const hasMore = rows.length > limit;
-  const conversations = rows.slice(0, limit);
+  const mappedRows = rows.map(r => ({
+    ...r.conversation,
+    claimed_by_name: r.claimed_by_name,
+  }));
+
+  const hasMore = mappedRows.length > limit;
+  const conversations = mappedRows.slice(0, limit);
 
   let nextCursor: string | null = null;
   if (hasMore && conversations.length > 0) {

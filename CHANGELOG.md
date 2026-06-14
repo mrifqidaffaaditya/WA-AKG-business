@@ -1,5 +1,39 @@
 # Changelog
 
+## [3.1.0] — 2026-06-14
+
+### 🎨 UI Redesign — Sidebar Navigation & Chat Stability
+
+### Added
+- **Expandable sidebar** — collapsible sidebar (w-16 ↔ w-56) with smooth transition, replacing icon-only left rail
+- **Cross-panel navigation** — "Panel CS" button in admin sidebar, "Panel Admin" button in CS sidebar, one-click role switching
+- **Sidebar tab labels + active indicators** — emerald dot indicator on active tab, full text labels when expanded
+- **"All" tab in CS sidebar** — view all conversations regardless of status
+- **Queue badge** — Waiting count badge in CS sidebar nav (real-time via Socket.io `queue:update`)
+
+### Changed
+- **Sidebar is primary navigation** — removed duplicate top tab bars from admin and CS pages; sidebar handles all routing
+- **Admin Dashboard cards** — gradient backgrounds, colored borders, hover arrow effect, 28px stat values, uppercase labels
+- **Dashboard distribution chart** — percentage labels per bar, color-coded dots
+- **Login page** — radial emerald gradient backdrop, glow icon, spinner on submit button, footer copyright
+- **Gateway panel** — gradient card backgrounds, shadow pulse dot for connected state, border-accent status cards
+- **User table** — uppercase header labels, dot indicators for active/inactive, bordered role badges
+- **Audit log** — action pills in slate badges, improved row hover states
+- **ConversationList** — emerald left-border on selected item, bordered status badges, spinner loader
+- **ChatWindow** — separated scroll restore logic via `useEffect`, `loadingMoreRef` prevents double-load race condition, fixed scroll jank when loading long messages
+- **Scrollbar** — 5px transparent track, thinner thumb for cleaner look
+- **All pages** — marked `dynamic = "force-dynamic"` in layouts to prevent `useSearchParams` SSR bailout during build
+
+### Fixed
+- Sidebar navigation not responding — removed conflicting top tab bars
+- Chat message scroll breaking on long messages — replaced `scrollIntoView` with direct `scrollTop`, fixed scroll anchor restoration on history load
+- Build failure on `/admin` and `/cs` due to `useSearchParams` in prerender — added `force-dynamic` to layouts
+
+### Removed
+- Duplicate top tab bars from admin and CS pages (redundant with sidebar)
+- `handleTabChange` / `updateTab` from CS page (sidebar handles it)
+- Unused `Modal` import and orphan dead modal from CS page
+
 ## [3.0.0] — 2026-06-14
 
 ### 🎉 v3 Rewrite — Split Architecture with Nginx

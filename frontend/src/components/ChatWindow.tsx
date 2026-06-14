@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import Modal from "@/components/Modal";
 import { formatPhone, timeAgo, playBeep } from "@/lib/utils";
@@ -10,10 +10,12 @@ import {
   Send,
   Paperclip,
   X,
-  Image,
-  File,
+  Image as ImageIcon,
+  File as FileIcon,
   CheckCircle,
   ArrowDown,
+  MoreVertical,
+  ArrowLeft,
   Clock,
 } from "lucide-react";
 
@@ -34,18 +36,24 @@ interface Conversation {
   customer_name: string | null;
   status: "bot" | "waiting" | "active" | "resolved";
   claimed_by: string | null;
+  claimed_by_name?: string | null;
   total_sessions?: number;
 }
 
 interface ChatWindowProps {
   conversation: Conversation | null;
   soundEnabled?: boolean;
+  onBack?: () => void;
 }
 
-export default function ChatWindow({
-  conversation,
-  soundEnabled,
-}: ChatWindowProps) {
+const statusConfig: Record<string, { label: string; color: string }> = {
+  waiting: { label: "Waiting", color: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  active: { label: "Active", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  resolved: { label: "Resolved", color: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
+  bot: { label: "Bot", color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+};
+
+export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatWindowProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -53,6 +61,7 @@ export default function ChatWindow({
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [newMessageBadge, setNewMessageBadge] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
@@ -67,73 +76,91 @@ export default function ChatWindow({
   }>({ isOpen: false, title: "", message: "", type: "info" });
 
   const [resolveModal, setResolveModal] = useState(false);
+  const [resolveReview, setResolveReview] = useState("");
   const [claimLoading, setClaimLoading] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<string[]>([]);
 
-  const bottomRef = useRef<HTMLDivElement>(null);
   const messageContainerRef = useRef<HTMLDivElement>(null);
-  const firstMessageRef = useRef<string | null>(null);
-  const isAtBottomRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    bottomRef.current?.scrollIntoView({ behavior });
-  }, []);
-
-  const handleScroll = useCallback(() => {
     const el = messageContainerRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-    isAtBottomRef.current = atBottom;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
 
-    if (atBottom) {
-      setNewMessageBadge(false);
-    }
+  // Handle intersection for loading older messages
+  useEffect(() => {
+    if (!hasMore || loadingMore || !nextCursor || !conversation) return;
+    const el = topRef.current;
+    if (!el) return;
 
-    if (el.scrollTop < 50 && hasMore && !loadingMore && nextCursor) {
-      el.style.overflowAnchor = "none";
-      const prevHeight = el.scrollHeight;
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadOlderMessages();
+        }
+      },
+      { root: messageContainerRef.current, threshold: 0.1 }
+    );
+    observerRef.current.observe(el);
 
-      setLoadingMore(true);
-      apiFetch(
-        "/api/conversations/" +
-          conversation?.id +
-          "/messages?cursor=" +
-          nextCursor +
-          "&limit=30&direction=older"
-      )
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.messages) {
-            setMessages((prev) => {
-              const existingIds = new Set(prev.map((m) => m.id));
-              const newMsgs = data.messages.filter(
-                (m: Message) => !existingIds.has(m.id)
-              );
-              firstMessageRef.current = newMsgs[newMsgs.length - 1]?.id || null;
-              return [...newMsgs, ...prev];
-            });
-            setHasMore(data.has_more);
-            setNextCursor(data.next_cursor);
-          }
-        })
-        .finally(() => {
-          setLoadingMore(false);
+    return () => {
+      observerRef.current?.disconnect();
+    };
+  }, [hasMore, loadingMore, nextCursor, conversation]);
+
+  const loadOlderMessages = () => {
+    if (loadingMore || !nextCursor || !conversation) return;
+    setLoadingMore(true);
+
+    const el = messageContainerRef.current;
+    const prevScrollHeight = el ? el.scrollHeight : 0;
+
+    apiFetch(
+      "/api/conversations/" + conversation.id + "/messages?cursor=" + nextCursor + "&limit=30&direction=older"
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.messages) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const newMsgs = data.messages.filter((m: Message) => !existingIds.has(m.id));
+            return [...newMsgs, ...prev]; // Prepend older messages
+          });
+          setHasMore(data.has_more);
+          setNextCursor(data.next_cursor);
+          
+          // Maintain scroll position after React renders new items
           requestAnimationFrame(() => {
             if (el) {
-              el.scrollTop = el.scrollHeight - prevHeight;
-              el.style.overflowAnchor = "";
+              const newHeight = el.scrollHeight;
+              el.scrollTop = el.scrollTop + (newHeight - prevScrollHeight);
             }
           });
-        });
-    }
-  }, [hasMore, loadingMore, nextCursor, conversation?.id]);
+        }
+      })
+      .finally(() => {
+        setLoadingMore(false);
+      });
+  };
 
   useEffect(() => {
     const el = messageContainerRef.current;
     if (!el) return;
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, [handleScroll]);
+
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      isAtBottomRef.current = atBottom;
+      if (atBottom) setNewMessageBadge(false);
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     if (!conversation) {
@@ -147,107 +174,101 @@ export default function ChatWindow({
     setFile(null);
     setFilePreview(null);
     setNewMessageBadge(false);
-    firstMessageRef.current = null;
+    isAtBottomRef.current = true;
 
-    apiFetch(
-      "/api/conversations/" +
-        conversation.id +
-        "/messages?limit=30&direction=older"
-    )
+    apiFetch("/api/conversations/" + conversation.id + "/messages?limit=30&direction=older")
       .then((res) => res.json())
       .then((data) => {
         setMessages(data.messages || []);
         setHasMore(data.has_more);
         setNextCursor(data.next_cursor);
       })
-      .catch(() => {
-        setMessages([]);
-      })
+      .catch(() => setMessages([]))
       .finally(() => {
         setLoading(false);
-        setTimeout(() => scrollToBottom("auto"), 50);
+        requestAnimationFrame(() => scrollToBottom("instant"));
       });
-
-    return () => {};
-  }, [conversation?.id]);
+  }, [conversation?.id, scrollToBottom]);
 
   useEffect(() => {
     const socket = getIO();
     if (!socket || !conversation) return;
 
-    const handleMessage = (data: { conversationId: string; message: Message }) => {
-      const msg = data.message || (data as any);
+    const handleMessage = (data: { conversationId?: string; message?: Message }) => {
+      const msg: Message = data.message || (data as unknown as Message);
       if (msg.conversation_id !== conversation.id) return;
+      
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
 
-      if (msg.sender !== "cs" && soundEnabled) {
-        playBeep();
-      }
-
-      if (isAtBottomRef.current) {
-        setTimeout(() => scrollToBottom("smooth"), 50);
-      } else if (msg.sender !== "cs") {
+      if (isAtBottomRef.current || msg.sender === "cs") {
+        requestAnimationFrame(() => scrollToBottom("smooth"));
+      } else {
         setNewMessageBadge(true);
       }
     };
 
     socket.on("conversation:message", handleMessage);
-
-    return () => {
-      socket.off("conversation:message", handleMessage);
-    };
+    return () => { socket.off("conversation:message", handleMessage); };
   }, [conversation, soundEnabled, scrollToBottom]);
 
   const sendMessage = async () => {
     if (!conversation || (!input.trim() && !file)) return;
 
-    const body: Record<string, unknown> = {
-      content: input.trim(),
-      contentType: "text",
-    };
-
+    const body: Record<string, unknown> = { content: input.trim(), contentType: "text" };
     setInput("");
     setFile(null);
     setFilePreview(null);
 
     try {
-      const res = await apiFetch(
-        "/api/conversations/" + conversation.id + "/messages",
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        }
-      );
-      if (!res.ok) throw new Error("Gagal mengirim");
-    } catch {
-      setModal({
-        isOpen: true,
-        title: "Error",
-        message: "Gagal mengirim pesan",
-        type: "error",
+      const res = await apiFetch("/api/conversations/" + conversation.id + "/messages", {
+        method: "POST",
+        body: JSON.stringify(body),
       });
+      if (!res.ok) throw new Error("Gagal mengirim");
+      scrollToBottom("smooth");
+    } catch {
+      setModal({ isOpen: true, title: "Error", message: "Gagal mengirim pesan", type: "error" });
     }
   };
+
+  const loadMessages = useCallback(async (convId: string, limit = 30) => {
+    try {
+      setLoading(true);
+      const res = await apiFetch(`/api/conversations/${convId}/messages?limit=${limit}`);
+      if (!res.ok) throw new Error("Gagal mengambil pesan");
+      const data = await res.json();
+      setMessages(data.messages);
+      setNextCursor(data.nextCursor);
+      setHasMore(data.hasMore);
+      requestAnimationFrame(() => scrollToBottom("auto"));
+    } catch {
+      setModal({ isOpen: true, title: "Error", message: "Gagal memuat percakapan", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  }, [scrollToBottom]);
+
+  useEffect(() => {
+    // Fetch Quick Replies
+    apiFetch("/api/conversations/cs-config")
+      .then(res => res.json())
+      .then(data => {
+        if (data.quickReplies) setQuickReplies(data.quickReplies);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleClaim = async () => {
     if (!conversation) return;
     setClaimLoading(true);
     try {
-      const res = await apiFetch(
-        "/api/conversations/" + conversation.id + "/claim",
-        { method: "POST" }
-      );
+      const res = await apiFetch("/api/conversations/" + conversation.id + "/claim", { method: "POST" });
       if (!res.ok) throw new Error("Claim failed");
     } catch {
-      setModal({
-        isOpen: true,
-        title: "Error",
-        message: "Gagal mengklaim percakapan",
-        type: "error",
-      });
+      setModal({ isOpen: true, title: "Error", message: "Gagal mengklaim percakapan", type: "error" });
     } finally {
       setClaimLoading(false);
     }
@@ -256,18 +277,15 @@ export default function ChatWindow({
   const handleResolve = async () => {
     if (!conversation) return;
     try {
-      const res = await apiFetch(
-        "/api/conversations/" + conversation.id + "/resolve",
-        { method: "POST" }
-      );
-      if (!res.ok) throw new Error("Resolve failed");
-    } catch {
-      setModal({
-        isOpen: true,
-        title: "Error",
-        message: "Gagal menyelesaikan percakapan",
-        type: "error",
+      const res = await apiFetch("/api/conversations/" + conversation.id + "/resolve", { 
+        method: "POST",
+        body: JSON.stringify({ rating: null, review: resolveReview })
       });
+      if (!res.ok) throw new Error("Resolve failed");
+      setResolveModal(false);
+      setResolveReview("");
+    } catch {
+      setModal({ isOpen: true, title: "Error", message: "Gagal menyelesaikan percakapan", type: "error" });
     }
   };
 
@@ -275,11 +293,8 @@ export default function ChatWindow({
     const f = e.target.files?.[0];
     if (!f) return;
     setFile(f);
-    if (f.type.startsWith("image/")) {
-      setFilePreview(URL.createObjectURL(f));
-    } else {
-      setFilePreview(null);
-    }
+    if (f.type.startsWith("image/")) setFilePreview(URL.createObjectURL(f));
+    else setFilePreview(null);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -288,11 +303,8 @@ export default function ChatWindow({
     const f = e.dataTransfer.files?.[0];
     if (!f) return;
     setFile(f);
-    if (f.type.startsWith("image/")) {
-      setFilePreview(URL.createObjectURL(f));
-    } else {
-      setFilePreview(null);
-    }
+    if (f.type.startsWith("image/")) setFilePreview(URL.createObjectURL(f));
+    else setFilePreview(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -304,240 +316,307 @@ export default function ChatWindow({
 
   if (!conversation) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-4">
-            <Clock size={28} className="text-slate-500" />
+      <div className="flex-1 flex items-center justify-center bg-[#0A0F1C]">
+        <div className="text-center animate-in fade-in zoom-in duration-300">
+          <div className="w-20 h-20 rounded-2xl bg-[#0B1221] border border-slate-800/60 shadow-xl shadow-black/20 flex items-center justify-center mx-auto mb-6">
+            <Clock size={36} className="text-slate-600" />
           </div>
-          <p className="text-slate-500 text-sm">Pilih percakapan</p>
+          <h2 className="text-lg font-semibold text-slate-300 mb-1">Tidak Ada Obrolan</h2>
+          <p className="text-slate-500 text-sm">Pilih percakapan dari daftar di samping</p>
         </div>
       </div>
     );
   }
 
-  const isOwnClaim =
-    conversation.status === "active" && conversation.claimed_by === user?.id;
+  const isOwnClaim = conversation.status === "active" && conversation.claimed_by === user?.id;
+  const st = statusConfig[conversation.status] || statusConfig.bot;
 
   return (
-    <div className="flex-1 flex flex-col bg-slate-950 min-w-0">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-800 shrink-0">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium text-slate-200 truncate">
-              {conversation.customer_name || formatPhone(conversation.wa_number)}
-            </h3>
-            <span
-              className={
-                "shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium " +
-                (conversation.status === "waiting"
-                  ? "bg-amber-500/15 text-amber-400"
-                  : conversation.status === "active"
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : conversation.status === "resolved"
-                  ? "bg-slate-500/15 text-slate-400"
-                  : "bg-blue-500/15 text-blue-400")
-              }
+    <div className="flex-1 flex flex-col bg-[#0A0F1C] min-w-0 min-h-0 relative">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800/60 bg-[#0B1221]/80 backdrop-blur-md z-10 shrink-0">
+        <div className="min-w-0 flex-1 flex items-center gap-4">
+          {onBack && (
+            <button 
+              onClick={onBack}
+              className="md:hidden p-2 -ml-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition-colors"
             >
-              {conversation.status === "waiting"
-                ? "Waiting"
-                : conversation.status === "active"
-                ? "Active"
-                : conversation.status === "resolved"
-                ? "Resolved"
-                : "Bot"}
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 shadow-inner">
+            <span className="text-sm font-bold text-slate-300">
+              {(conversation.customer_name || "G")[0].toUpperCase()}
             </span>
           </div>
-          <p className="text-xs text-slate-500">
-            {formatPhone(conversation.wa_number)}
-            {conversation.total_sessions != null && conversation.total_sessions > 1 && (
-              <span className="ml-2 inline-flex text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 font-medium">
-                Pelanggan Lama ({conversation.total_sessions}x)
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <h3 className="text-base font-semibold text-slate-100 truncate">
+                {conversation.customer_name || formatPhone(conversation.wa_number)}
+              </h3>
+              <span className={"shrink-0 text-[10px] px-2 py-0.5 rounded-md font-medium border " + st.color}>
+                {st.label}
               </span>
-            )}
-          </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-slate-400 truncate">
+                {formatPhone(conversation.wa_number)}
+              </p>
+              {conversation.status === "active" && conversation.claimed_by && (
+                <span className="inline-flex text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                  {conversation.claimed_by === user?.id ? "Ditangani Anda" : `Ditangani oleh ${conversation.claimed_by_name || "CS"}`}
+                </span>
+              )}
+              {conversation.total_sessions != null && conversation.total_sessions > 1 && (
+                <span className="inline-flex text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 font-medium">
+                  {conversation.total_sessions}x
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-3 shrink-0 ml-4">
           {conversation.status === "waiting" && (
             <button
               onClick={handleClaim}
               disabled={claimLoading}
-              className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/20"
             >
-              <CheckCircle size={14} />
-              {claimLoading ? "..." : "Claim"}
+              <CheckCircle size={16} />
+              {claimLoading ? "..." : "Claim Chat"}
             </button>
           )}
           {(conversation.status === "active" || conversation.status === "waiting") &&
             (isOwnClaim || user?.role !== "cs") && (
               <button
                 onClick={() => setResolveModal(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/25 transition-colors"
+                className="flex items-center gap-1.5 rounded-xl bg-slate-800/80 border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all"
               >
-                <X size={14} />
+                <CheckCircle size={16} />
                 Resolve
               </button>
             )}
+              <div className="relative">
+                <button 
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors focus:outline-none"
+                >
+                  <MoreVertical size={20} />
+                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 rounded-xl bg-slate-800 border border-slate-700 shadow-xl overflow-hidden z-50">
+                    {onBack && (
+                      <button 
+                        onClick={() => { setMenuOpen(false); onBack(); }}
+                        className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-700 transition-colors md:hidden"
+                      >
+                        Kembali ke Daftar
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => { setMenuOpen(false); setResolveModal(true); }}
+                      className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-slate-700 transition-colors"
+                    >
+                      Tutup Chat (Resolve)
+                    </button>
+                  </div>
+                )}
+              </div>
         </div>
       </div>
 
+      {/* Messages */}
       <div
         ref={messageContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
+        className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth bg-[url('/pattern.png')] bg-repeat bg-[length:200px] bg-blend-soft-light"
       >
-        {loadingMore && (
-          <div className="text-center text-xs text-slate-500 py-2 animate-pulse">
-            Memuat pesan...
-          </div>
-        )}
+        <div className="flex flex-col gap-4 max-w-4xl mx-auto">
+          {/* Top intersection observer target */}
+          <div ref={topRef} className="h-px shrink-0" />
+          
+          {!hasMore && messages.length > 0 && (
+            <div className="text-center py-6">
+              <div className="inline-flex items-center gap-3 text-slate-500 bg-slate-900/50 px-4 py-1.5 rounded-full border border-slate-800/50 backdrop-blur-sm">
+                <span className="text-[11px] font-medium uppercase tracking-wider">Awal percakapan</span>
+              </div>
+            </div>
+          )}
 
-        {!hasMore && messages.length > 0 && (
-          <div className="text-center text-[10px] text-slate-600 py-2">
-            Awal percakapan
-          </div>
-        )}
+          {loadingMore && (
+            <div className="text-center py-4">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/40 border border-slate-700/50 backdrop-blur-sm shadow-sm">
+                <div className="w-4 h-4 rounded-full border-2 border-slate-500 border-t-emerald-500 animate-spin" />
+                <span className="text-[12px] font-medium text-slate-300">Memuat riwayat...</span>
+              </div>
+            </div>
+          )}
 
-        {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <span className="text-sm text-slate-500 animate-pulse">Memuat...</span>
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <span className="text-xs text-slate-500">Belum ada pesan</span>
-          </div>
-        ) : (
-          messages.map((msg) => {
+          {loading && (
+            <div className="flex-1 flex items-center justify-center min-h-[300px]">
+              <div className="flex flex-col items-center gap-3 text-slate-500">
+                <div className="w-8 h-8 rounded-full border-2 border-slate-700 border-t-emerald-500 animate-spin" />
+                <span className="text-sm font-medium">Memuat percakapan...</span>
+              </div>
+            </div>
+          )}
+
+          {!loading && messages.length === 0 && (
+            <div className="flex-1 flex items-center justify-center min-h-[300px]">
+              <div className="text-center text-slate-500">
+                <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center mx-auto mb-3">
+                  <MessageIcon size={20} className="text-slate-400" />
+                </div>
+                <span className="text-sm font-medium">Belum ada pesan di sini</span>
+              </div>
+            </div>
+          )}
+
+          {messages.map((msg, i) => {
             const isCustomer = msg.sender === "customer";
             const isBot = msg.sender === "bot";
             const isCs = msg.sender === "cs";
             const isMine = isCs && msg.cs_id === user?.id;
+            
+            // Show sender name if it's not the same sender as the previous message
+            const prevMsg = i > 0 ? messages[i-1] : null;
+            const showName = isCs && msg.cs_name && (!prevMsg || prevMsg.sender !== msg.sender || prevMsg.cs_id !== msg.cs_id);
 
             return (
               <div
                 key={msg.id}
-                className={
-                  "flex " +
-                  (isCustomer || isBot ? "justify-start" : "justify-end")
-                }
+                className={"flex w-full " + (isCustomer || isBot ? "justify-start" : "justify-end")}
               >
-                <div
-                  className={
-                    "max-w-[75%] rounded-xl px-3.5 py-2.5 " +
-                    (isCustomer
-                      ? "bg-slate-800 text-slate-200"
-                      : isBot
-                      ? "bg-teal-500/15 text-teal-300 border border-teal-500/20"
-                      : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20")
-                  }
-                >
-                  {isCs && !isMine && msg.cs_name && (
-                    <p className="text-[10px] text-slate-400 mb-0.5">{msg.cs_name}</p>
+                <div className="flex flex-col max-w-[85%] sm:max-w-[70%]">
+                  {showName && (
+                    <span className={"text-[11px] font-medium text-slate-400 mb-1 " + (isMine ? "text-right mr-1" : "ml-1")}>
+                      {isMine ? "Anda" : msg.cs_name}
+                    </span>
                   )}
+                  <div
+                    className={
+                      "relative rounded-2xl px-4 py-3 shadow-sm " +
+                      (isCustomer
+                        ? "bg-slate-800 border border-slate-700 text-slate-200 rounded-tl-sm"
+                        : isBot
+                        ? "bg-blue-500/10 text-blue-100 border border-blue-500/20 rounded-tl-sm"
+                        : isMine 
+                        ? "bg-emerald-600 text-white rounded-tr-sm shadow-emerald-500/10" 
+                        : "bg-slate-700 text-slate-100 border border-slate-600 rounded-tr-sm")
+                    }
+                  >
+                    {msg.content_type === "image" && (
+                      <div className="mb-2 overflow-hidden rounded-xl border border-white/10">
+                        <img
+                          src={msg.content}
+                          alt="Gambar"
+                          className="max-w-full max-h-[300px] object-cover transition-transform hover:scale-105"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
 
-                  {msg.content_type === "image" && (
-                    <img
-                      src={msg.content}
-                      alt="Image"
-                      className="max-w-[200px] rounded-lg mb-1"
-                    />
-                  )}
+                    {msg.content_type === "document" && (
+                      <a
+                        href={msg.content}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={"flex items-center gap-3 p-3 rounded-xl mb-2 transition-colors " + 
+                          (isMine ? "bg-emerald-700 hover:bg-emerald-800" : "bg-slate-900/50 hover:bg-slate-900/80")
+                        }
+                      >
+                        <div className={"w-8 h-8 rounded-lg flex items-center justify-center " + (isMine ? "bg-white/20" : "bg-slate-700")}>
+                          <FileIcon size={16} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-medium truncate">Dokumen</span>
+                          <span className={"text-[10px] " + (isMine ? "text-emerald-200" : "text-slate-400")}>Klik untuk mengunduh</span>
+                        </div>
+                      </a>
+                    )}
 
-                  {msg.content_type === "document" && (
-                    <a
-                      href={msg.content}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-sm text-blue-400 hover:underline mb-1"
-                    >
-                      <File size={14} />
-                      Dokumen
-                    </a>
-                  )}
+                    {msg.content && msg.content_type !== "image" && (
+                      <p className={"text-sm whitespace-pre-wrap break-words leading-relaxed " + (isMine ? "text-white" : "text-slate-200")}>
+                        {msg.content}
+                      </p>
+                    )}
 
-                  {msg.content && msg.content_type !== "image" && (
-                    <p className="text-sm whitespace-pre-wrap break-words">
-                      {msg.content}
-                    </p>
-                  )}
-
-                  <p className="text-[10px] mt-1 opacity-60 text-right">
-                    {timeAgo(msg.created_at)}
-                  </p>
+                    <div className={"flex items-center justify-end gap-1 mt-1 " + (isMine ? "text-emerald-200" : "text-slate-400")}>
+                      <span className="text-[10px] font-medium">
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
-          })
-        )}
-
-        {newMessageBadge && (
-          <button
-            onClick={() => {
-              scrollToBottom("smooth");
-              setNewMessageBadge(false);
-            }}
-            className="sticky bottom-0 mx-auto flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white shadow-lg"
-          >
-            <ArrowDown size={12} />
-            Pesan baru
-          </button>
-        )}
-
-        <div ref={bottomRef} />
+          })}
+        </div>
       </div>
 
-      {filePreview && (
-        <div className="px-4 py-2 border-t border-slate-800 flex items-center gap-3">
-          <img
-            src={filePreview}
-            alt="Preview"
-            className="h-10 w-10 rounded-lg object-cover"
-          />
-          <span className="text-xs text-slate-400 truncate flex-1">
-            {file?.name}
-          </span>
-          <button
-            onClick={() => {
-              setFile(null);
-              setFilePreview(null);
-            }}
-            className="text-slate-500 hover:text-slate-300"
-          >
-            <X size={16} />
-          </button>
+      {newMessageBadge && (
+        <button
+          onClick={() => {
+            scrollToBottom("smooth");
+            setNewMessageBadge(false);
+          }}
+          className="absolute bottom-[90px] right-6 z-20 flex items-center gap-2 rounded-full bg-emerald-500 pl-3 pr-4 py-2 text-sm font-semibold text-white shadow-lg shadow-black/40 hover:bg-emerald-600 hover:-translate-y-0.5 transition-all animate-in slide-in-from-bottom-5"
+        >
+          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+            <ArrowDown size={14} />
+          </div>
+          Ada Pesan Baru
+        </button>
+      )}
+
+      {/* Quick Replies */}
+      {conversation?.status === "active" && quickReplies.length > 0 && (
+        <div className="absolute bottom-[80px] left-0 right-0 px-4 py-2 flex gap-2 overflow-x-auto custom-scrollbar bg-gradient-to-t from-[#0B1221] to-transparent z-10 pb-4">
+          {quickReplies.map((qr, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                setInput((prev) => (prev ? prev + " " + qr : qr));
+              }}
+              className="whitespace-nowrap px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors shadow-sm shrink-0"
+            >
+              {qr}
+            </button>
+          ))}
         </div>
       )}
 
-      {file && !filePreview && (
-        <div className="px-4 py-2 border-t border-slate-800 flex items-center gap-3">
-          <File size={16} className="text-slate-400" />
-          <span className="text-xs text-slate-400 truncate flex-1">
-            {file.name}
-          </span>
-          <button
-            onClick={() => {
-              setFile(null);
-              setFilePreview(null);
-            }}
-            className="text-slate-500 hover:text-slate-300"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
+      {/* Input Area */}
+      <div className="bg-[#0B1221] border-t border-slate-800/60 p-3 sm:p-4 z-10 shrink-0">
+        {filePreview && (
+          <div className="mb-3 p-2 border border-slate-700 rounded-xl bg-slate-800/50 flex items-center gap-3 w-max">
+            <img src={filePreview} alt="Preview" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
+            <span className="text-xs font-medium text-slate-300 max-w-[150px] truncate">{file?.name}</span>
+            <button onClick={() => { setFile(null); setFilePreview(null); }} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg ml-2 transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
-      <div
-        className={
-          "border-t border-slate-800 px-4 py-3 " +
-          (dragOver ? "bg-emerald-500/10" : "")
-        }
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-      >
-        <div className="flex items-end gap-2">
+        {file && !filePreview && (
+          <div className="mb-3 p-3 border border-slate-700 rounded-xl bg-slate-800/50 flex items-center gap-3 w-max max-w-sm">
+            <div className="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center text-slate-300 shrink-0">
+              <FileIcon size={20} />
+            </div>
+            <span className="text-xs font-medium text-slate-300 flex-1 truncate">{file.name}</span>
+            <button onClick={() => { setFile(null); setFilePreview(null); }} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        <div
+          className={"relative flex items-end gap-2 p-2 rounded-2xl transition-colors " + 
+            (dragOver ? "bg-emerald-500/10 border-2 border-dashed border-emerald-500" : "bg-slate-900 border border-slate-700")}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -547,26 +626,31 @@ export default function ChatWindow({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="shrink-0 rounded-lg p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="shrink-0 p-3 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-xl transition-all"
+            title="Lampirkan File"
           >
-            <Paperclip size={18} />
+            <Paperclip size={20} />
           </button>
 
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ketik pesan..."
+            placeholder="Ketik balasan Anda..."
             rows={1}
-            className="flex-1 resize-none rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-600"
+            style={{ minHeight: '44px', maxHeight: '120px' }}
+            className="flex-1 resize-none bg-transparent py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none custom-scrollbar"
           />
 
           <button
             onClick={sendMessage}
             disabled={!input.trim() && !file}
-            className="shrink-0 rounded-lg bg-emerald-500 p-2 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className={"shrink-0 p-3 rounded-xl transition-all flex items-center justify-center " + 
+              ((!input.trim() && !file) 
+                ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
+                : "bg-emerald-500 text-white hover:bg-emerald-600 shadow-md shadow-emerald-500/20 active:scale-95")}
           >
-            <Send size={18} />
+            <Send size={20} className={input.trim() || file ? "translate-x-0.5" : ""} />
           </button>
         </div>
       </div>
@@ -577,11 +661,23 @@ export default function ChatWindow({
         type="warning"
         isConfirm
         title="Selesaikan Percakapan"
-        message="Anda yakin ingin menyelesaikan percakapan ini? Ringkasan akan dibuat otomatis."
+        message="Berikan catatan penyelesaian (opsional) sebelum menutup percakapan ini. Customer akan otomatis diminta memberikan rating 1-5 via WhatsApp."
         confirmText="Selesaikan"
         cancelText="Batal"
         onConfirm={handleResolve}
-      />
+      >
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="block text-sm text-slate-300 font-semibold mb-2">Catatan Penyelesaian (Opsional)</label>
+            <textarea
+              value={resolveReview}
+              onChange={(e) => setResolveReview(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 resize-none h-24 custom-scrollbar"
+              placeholder="Contoh: Kendala paket tertunda sudah diatasi..."
+            />
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={modal.isOpen}
@@ -591,5 +687,13 @@ export default function ChatWindow({
         type={modal.type}
       />
     </div>
+  );
+}
+
+function MessageIcon({ size, className }: { size?: number; className?: string }) {
+  return (
+    <svg width={size || 18} height={size || 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
   );
 }
