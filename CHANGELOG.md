@@ -1,6 +1,6 @@
 # Changelog
 
-## [3.5.0] — 2026-06-15
+## [3.4.1] — 2026-06-15
 
 ### Added
 - **WhatsApp Message Reply/Quote Feature** — Fully supported two-way message quoting (CS ➔ Customer and Customer ➔ CS). Displays a nested quote preview card inside message bubbles with the original sender's name and quoted content.
