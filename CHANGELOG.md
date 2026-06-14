@@ -14,7 +14,7 @@
 
 ### Fixed
 - **LID Decryption Error ("Menunggu Pesan")** — Fixed WhatsApp decryption failure when agent replies to contacts using a LID by dynamically mapping and routing agent messages to their corresponding active LID JID stored in the customer database record.
-- **Baileys Retry Decryption Error ("Menunggu Pesan")** — Implemented the required `getMessage` handler and `msgRetryCounterCache` (using in-memory store and database fallbacks) in the Baileys socket options to enable successful decryption retries when messages fail to decrypt initially.
+- **Baileys Retry Decryption Error ("Menunggu Pesan")** — Implemented the required `getMessage` handler and `msgRetryCounterCache` (using custom Map store and database fallbacks) in the Baileys socket options to enable successful decryption retries without external `makeInMemoryStore` export dependency.
 
 ## [3.1.0] — 2026-06-14
 
