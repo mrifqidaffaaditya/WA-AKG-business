@@ -10,6 +10,7 @@ import {
   downloadMediaMessage,
   AnyMessageContent,
   delay,
+  makeInMemoryStore,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
@@ -18,6 +19,38 @@ import { logger } from "../utils/logger.js";
 import { EventEmitter } from "events";
 
 export const waEvents = new EventEmitter();
+
+export const store = makeInMemoryStore({
+  logger: logger.child({ stream: "store" }) as any
+});
+
+// Load initial store
+try {
+  store.readFromFile(`${config.wa.sessionPath}/baileys_store.json`);
+} catch {}
+
+// Save store every 30s
+setInterval(() => {
+  try {
+    store.writeToFile(`${config.wa.sessionPath}/baileys_store.json`);
+  } catch (err) {
+    logger.error("[wa] Failed to save store to file:", err);
+  }
+}, 30000);
+
+class SimpleCache {
+  private map = new Map<string, number>();
+  get(key: string): number | undefined {
+    return this.map.get(key);
+  }
+  set(key: string, val: number): void {
+    this.map.set(key, val);
+  }
+  del(key: string): void {
+    this.map.delete(key);
+  }
+}
+const msgRetryCounterCache = new SimpleCache();
 
 let sock: ReturnType<typeof makeWASocket> | null = null;
 let currentQR: string | null = null;
@@ -65,7 +98,36 @@ export async function connectWa(): Promise<void> {
       trace() {},
     } as any,
     browser: ["WA-AKG", "Chrome", "1.0"],
+    msgRetryCounterCache,
+    getMessage: async (key) => {
+      if (store) {
+        const msg = await store.loadMessage(key.remoteJid!, key.id!);
+        if (msg) return msg.message || undefined;
+      }
+      // Fallback: lookup in database
+      try {
+        const { db, schema } = await import("../db/index.js");
+        const { eq } = await import("drizzle-orm");
+        const dbMsg = await db
+          .select()
+          .from(schema.messages)
+          .where(eq(schema.messages.wa_message_id, key.id!))
+          .limit(1);
+        
+        if (dbMsg.length > 0) {
+          const m = dbMsg[0];
+          if (m.content_type === "text") {
+            return { conversation: m.content || "" };
+          }
+        }
+      } catch (err) {
+        logger.error("[wa] getMessage database fallback error:", err);
+      }
+      return undefined;
+    },
   });
+
+  store.bind(sock.ev);
 
   sock.ev.on("creds.update", saveCreds);
 
