@@ -64,7 +64,7 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
   const { user, loading: authLoading } = useAuth();
 
   // Build verification marker — check this in browser console
-  console.log("[ADMIN-PAGE-v3]", { userIsNull: user === null, authLoading, slug: params.slug });
+  // console.log("[ADMIN-PAGE-v3]", { userIsNull: user === null, authLoading, slug: params.slug });
 
   const slug = params.slug?.[0] || "dashboard";
   const VALID_TABS: TabType[] = ["dashboard", "bot", "stock", "users", "gateway", "audit", "cs_config"];
@@ -1060,7 +1060,7 @@ function UserPanel() {
     apiFetch("/api/admin/users")
       .then((res) => res.json())
       .then((data) => {
-        setUsers(data.users || data || []);
+        setUsers((data.users || data || []).filter(Boolean));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -1174,7 +1174,8 @@ function UserPanel() {
     (r) => (ROLE_LEVEL[r] || 0) < actorRoleLevel
   );
 
-  function canModify(target: User): boolean {
+  function canModify(target: User | null | undefined): boolean {
+    if (!target) return false;
     return (ROLE_LEVEL[target.role] || 0) < actorRoleLevel && target.id !== user?.id;
   }
 
