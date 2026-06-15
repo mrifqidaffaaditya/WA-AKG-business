@@ -63,6 +63,9 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
+  // Build verification marker — check this in browser console
+  console.log("[ADMIN-PAGE-v3]", { userIsNull: user === null, authLoading, slug: params.slug });
+
   const slug = params.slug?.[0] || "dashboard";
   const VALID_TABS: TabType[] = ["dashboard", "bot", "stock", "users", "gateway", "audit", "cs_config"];
   const activeTab: TabType = VALID_TABS.includes(slug as TabType) ? (slug as TabType) : "dashboard";
@@ -75,7 +78,6 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      // User logged out — save current path and redirect to login
       if (typeof window !== "undefined") {
         sessionStorage.setItem("return_to", window.location.pathname);
       }
@@ -90,7 +92,8 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
     }
   }, [user]);
 
-  if (!user) {
+  // Safety: never render anything below this point if user is null or still loading
+  if (!user || authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="flex items-center gap-3 text-slate-500">
