@@ -1,6 +1,11 @@
 const BASE = "";
 const FETCH_TIMEOUT_MS = 8000;
 
+// Access token is held in memory ONLY. It is never written to localStorage, so
+// an XSS payload cannot read it back. The httpOnly `access_token` cookie (set by
+// the backend at login/refresh) is the durable credential and is sent
+// automatically with `credentials: "include"`. The in-memory copy is just an
+// optimisation to attach an Authorization header within the same tab session.
 let accessToken: string | null = null;
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -16,29 +21,17 @@ function fetchWithTimeout(
 
 export function setTokens(access: string) {
   accessToken = access;
-  if (typeof window !== "undefined") {
-    localStorage.setItem("access_token", access);
-  }
 }
 
 export function loadTokens(): { access: string | null } {
-  if (typeof window !== "undefined") {
-    accessToken = localStorage.getItem("access_token");
-  }
   return { access: accessToken };
 }
 
 export function clearTokens() {
   accessToken = null;
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("access_token");
-  }
 }
 
 export function getAccessToken(): string | null {
-  if (!accessToken && typeof window !== "undefined") {
-    accessToken = localStorage.getItem("access_token");
-  }
   return accessToken;
 }
 
@@ -64,9 +57,6 @@ async function refreshAccessToken(): Promise<string | null> {
       const data = await res.json();
       const newAccess = data.accessToken || data.access_token;
       accessToken = newAccess;
-      if (typeof window !== "undefined") {
-        localStorage.setItem("access_token", newAccess);
-      }
       return newAccess;
     } catch {
       clearTokens();
@@ -203,7 +193,8 @@ export function del<T = unknown>(url: string): Promise<T> {
 
 export function getAuthenticatedMediaUrl(mediaUrl: string): string {
   if (!mediaUrl || !mediaUrl.startsWith("/uploads/")) return "";
-  const token = getAccessToken();
-  if (!token) return mediaUrl;
-  return `${mediaUrl}?token=${encodeURIComponent(token)}`;
+  // The httpOnly access_token cookie authenticates /uploads requests, so the
+  // token is no longer appended to the URL (which would leak it into browser
+  // history, Referer headers, and server access logs).
+  return mediaUrl;
 }

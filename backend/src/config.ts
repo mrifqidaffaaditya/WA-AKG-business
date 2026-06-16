@@ -3,11 +3,17 @@ import "dotenv/config";
 const appSecret = process.env.APP_SECRET || "";
 const refreshSecret = process.env.REFRESH_SECRET || "";
 
-if (process.env.NODE_ENV === "production" && (!appSecret || appSecret === "")) {
-  throw new Error("APP_SECRET must be set in production. Generate a random 32+ byte string.");
+// JWT secrets must NEVER be empty in ANY environment. An empty secret means
+// tokens are signed with "" and can be trivially forged. The guard previously
+// only ran in production, so a missing/unset NODE_ENV left signing wide open.
+if (!appSecret) {
+  throw new Error("APP_SECRET must be set. Generate a random 32+ byte string.");
 }
-if (process.env.NODE_ENV === "production" && (!refreshSecret || refreshSecret === "")) {
-  throw new Error("REFRESH_SECRET must be set in production (separate from APP_SECRET). Generate a random 32+ byte string. Do NOT reuse APP_SECRET.");
+if (!refreshSecret) {
+  throw new Error("REFRESH_SECRET must be set (separate from APP_SECRET). Generate a random 32+ byte string. Do NOT reuse APP_SECRET.");
+}
+if (appSecret === refreshSecret) {
+  throw new Error("REFRESH_SECRET must differ from APP_SECRET.");
 }
 
 export const config = {

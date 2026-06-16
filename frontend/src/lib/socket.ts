@@ -15,7 +15,12 @@ export function connect(): Socket {
     process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? window.location.origin : "");
 
   socket = io(url, {
+    // `auth.token` is the in-memory token (present after login in this tab).
+    // `withCredentials` makes the handshake send the httpOnly access_token
+    // cookie, so the socket still authenticates on a fresh page load where the
+    // memory token is null. The backend accepts either.
     auth: { token },
+    withCredentials: true,
     transports: ["websocket", "polling"],
     reconnection: true,
     reconnectionAttempts: 10,

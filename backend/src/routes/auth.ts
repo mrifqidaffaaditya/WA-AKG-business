@@ -11,6 +11,7 @@ import {
   revokeAllUserTokens,
   verifyRefreshToken,
   isRefreshTokenValid,
+  DUMMY_PASSWORD_HASH,
 } from "../services/auth.js";
 import { authenticate, AuthRequest } from "../middleware/auth.js";
 import { loginRateLimitPassthrough, refreshRateLimitPassthrough, profileRateLimitPassthrough } from "../middleware/rateLimit.js";
@@ -42,20 +43,16 @@ router.post("/login", loginRateLimitPassthrough, async (req, res) => {
       .where(eq(schema.users.email, email))
       .limit(1);
 
-    if (users.length === 0) {
-      res.status(401).json({ error: "Invalid credentials" });
-      return;
-    }
-
     const user = users[0];
 
-    if (!user.is_active) {
-      res.status(401).json({ error: "Invalid credentials" });
-      return;
-    }
+    // Always run exactly one bcrypt comparison — against the real hash when the
+    // user exists, otherwise against a dummy hash — so response timing does not
+    // reveal whether an email is registered (prevents enumeration). Inactive
+    // accounts also still compare, then fail with the same generic message.
+    const hashToCompare = user?.password_hash || DUMMY_PASSWORD_HASH;
+    const passwordMatches = await comparePassword(password, hashToCompare);
 
-    const valid = await comparePassword(password, user.password_hash);
-    if (!valid) {
+    if (!user || !user.is_active || !passwordMatches) {
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }

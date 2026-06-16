@@ -32,8 +32,8 @@ interface ConversationListProps {
 
 const statusConfig: Record<string, { label: string; color: string; dot: string }> = {
   waiting: { label: "Waiting", color: "bg-amber-500/10 text-amber-400 border-amber-500/20", dot: "bg-amber-400" },
-  active: { label: "Active", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-400" },
-  bot: { label: "Bot", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", dot: "bg-blue-400" },
+  active: { label: "Active", color: "bg-amber-500/10 text-amber-400 border-amber-500/20", dot: "bg-amber-400" },
+  bot: { label: "Bot", color: "bg-sky-500/10 text-sky-400 border-sky-500/20", dot: "bg-sky-400" },
   resolved: { label: "Selesai", color: "bg-slate-500/10 text-slate-400 border-slate-500/20", dot: "bg-slate-500" },
   hold: { label: "On Hold", color: "bg-orange-500/10 text-orange-400 border-orange-500/20", dot: "bg-orange-400" },
 };
@@ -41,12 +41,12 @@ const statusConfig: Record<string, { label: string; color: string; dot: string }
 function avatarGradient(name: string): string {
   const hash = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const gradients = [
-    "from-emerald-500/30 to-teal-600/30",
-    "from-blue-500/30 to-cyan-600/30",
-    "from-violet-500/30 to-purple-600/30",
+    "from-amber-500/30 to-amber-600/30",
+    "from-sky-500/30 to-sky-600/30",
+    "from-rose-500/30 to-rose-600/30",
     "from-amber-500/30 to-orange-600/30",
     "from-rose-500/30 to-pink-600/30",
-    "from-sky-500/30 to-indigo-600/30",
+    "from-sky-500/30 to-amber-600/30",
   ];
   return gradients[hash % gradients.length];
 }
@@ -87,7 +87,7 @@ const ConvRow = forwardRef<HTMLDivElement, {
         className={
           "w-full text-left p-3 rounded-xl transition-all duration-200 cursor-pointer border " +
           (isSelected
-            ? "bg-emerald-500/10 border-emerald-500/30 shadow-sm"
+            ? "bg-amber-500/10 border-amber-500/30 shadow-sm"
             : "bg-transparent border-transparent hover:bg-slate-800/30 hover:border-slate-700/40 hover:shadow-sm")
         }
       >
@@ -97,26 +97,26 @@ const ConvRow = forwardRef<HTMLDivElement, {
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-gradient-to-br ${
                   isSelected
-                    ? "from-emerald-500/40 to-teal-600/40 text-white border border-emerald-500/30"
+                    ? "from-amber-500/40 to-amber-600/40 text-white border border-amber-500/30"
                     : avatarGradient(displayName) + " text-slate-200 border border-slate-700"
                 }`}
               >
                 {displayName[0].toUpperCase()}
               </div>
               {conv.unread && conv.unread > 0 ? (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-emerald-500 text-white text-[9px] font-bold px-1 shadow-sm border-2 border-slate-950">
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-amber-500 text-slate-950 text-[9px] font-bold px-1 shadow-sm border-2 border-slate-950">
                   {conv.unread > 99 ? "99+" : conv.unread}
                 </span>
               ) : null}
               {conv.status === "active" && (
-                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse-dot" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-slate-950 animate-pulse-dot" />
               )}
             </div>
             <div className="min-w-0">
               <span
                 className={
                   "text-sm font-semibold truncate block " +
-                  (isSelected ? "text-emerald-400" : "text-slate-200")
+                  (isSelected ? "text-amber-400" : "text-slate-200")
                 }
               >
                 {displayName}
@@ -133,7 +133,7 @@ const ConvRow = forwardRef<HTMLDivElement, {
             </span>
             <div className="flex items-center gap-1">
               {conv.total_sessions != null && conv.total_sessions > 1 && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold">
                   {conv.total_sessions}x
                 </span>
               )}
@@ -212,7 +212,7 @@ export default function ConversationList({
       return (
         <div className="flex items-center justify-center py-4">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/50 border border-slate-700/50 backdrop-blur-sm">
-            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
             <span className="text-[11px] font-medium text-slate-300">
               Memuat...
             </span>
@@ -256,8 +256,8 @@ export default function ConversationList({
   }, [filtered.length, loading, search]);
 
   return (
-    <div className="h-full bg-[#0A0F1C] flex flex-col">
-      <div className="shrink-0 bg-[#0A0F1C] border-b border-slate-800/50">
+    <div className="h-full bg-slate-950 flex flex-col">
+      <div className="shrink-0 bg-slate-950 border-b border-slate-800/50">
         <div className="px-3 py-2.5 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-200">Percakapan</h2>
           <span className="text-[10px] font-medium bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">
@@ -273,7 +273,7 @@ export default function ConversationList({
                   onClick={() => onTabChange(tab)}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer ${
                     activeTab === tab
-                      ? "bg-emerald-500/10 text-emerald-400"
+                      ? "bg-amber-500/10 text-amber-400"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
                   }`}
                 >
@@ -300,11 +300,13 @@ export default function ConversationList({
                   value={search}
                   onChange={(e) => onSearchChange(e.target.value)}
                   placeholder="Cari nama, nomor, atau pesan..."
-                  className="w-full rounded-lg bg-slate-800/50 border border-slate-700/60 pl-8 pr-8 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                  aria-label="Cari percakapan"
+                  className="w-full rounded-lg bg-slate-800/50 border border-slate-700/60 pl-8 pr-8 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/40 focus:ring-1 focus:ring-amber-500/20 transition-all"
                 />
                 {search && (
                   <button
                     onClick={() => onSearchChange("")}
+                    aria-label="Hapus pencarian"
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

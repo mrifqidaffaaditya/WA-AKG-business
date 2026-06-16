@@ -10,7 +10,7 @@ import { createAuditLog } from "../utils/audit.js";
 import { previewStock, clearStockCache, syncStockNow } from "../services/stock.js";
 import { logger } from "../utils/logger.js";
 import { getDashboardStats } from "../services/dashboard.js";
-import { getCsConfig, updateCsConfig } from "../services/csConfig.js";
+import { getCsConfig, updateCsConfig, validateCsConfigFields } from "../services/csConfig.js";
 import { getActiveUserIds } from "../ws/index.js";
 
 const ALLOWED_BOT_CONFIG_FIELDS = [
@@ -156,6 +156,12 @@ router.get("/cs-config", async (_req, res) => {
 
 router.put("/cs-config", async (req: AuthRequest, res) => {
   try {
+    const validationError = validateCsConfigFields(req.body);
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+
     const updated = await updateCsConfig(req.body);
     
     await createAuditLog({
@@ -383,7 +389,15 @@ router.put("/users/:id", async (req: AuthRequest, res) => {
       updates.role = role;
       await revokeAllUserTokens(userId);
     }
-    if (is_active !== undefined) updates.is_active = is_active;
+    if (is_active !== undefined) {
+      updates.is_active = is_active;
+      // Deactivating a user must immediately end their sessions: revoke refresh
+      // tokens so they can't mint new access tokens. Combined with the is_active
+      // check in authenticate, existing access tokens also stop working at once.
+      if (is_active === false) {
+        await revokeAllUserTokens(userId);
+      }
+    }
     if (password) {
       if (password.length < 5) {
         res.status(400).json({ error: "Password must be at least 5 characters" });

@@ -12,18 +12,63 @@ const config: Config = {
         heading: ["var(--font-fira-sans)", "system-ui", "sans-serif"],
       },
       colors: {
+        // ── Warm charcoal base (remaps `slate-*` app-wide) ──
+        // Darker index = deeper background; lighter index = brighter text.
+        slate: {
+          50: "#faf7f1",
+          100: "#f5efe5",
+          200: "#ede8e0", // primary text (cream)
+          300: "#d9d0c0",
+          400: "#b5a98f", // muted text / labels
+          500: "#8e8167", // faint text / timestamps
+          600: "#6b5f49",
+          700: "#3a342a", // borders
+          750: "#322c23",
+          800: "#2b261e", // input / hover surface
+          850: "#232019",
+          900: "#1f1b14", // raised panel
+          950: "#1a1612", // app background
+        },
+        // `stone-*` kept as an explicit alias to the same warm ramp
+        stone: {
+          50: "#faf7f1",
+          100: "#f5efe5",
+          200: "#ede8e0",
+          300: "#d9d0c0",
+          400: "#b5a98f",
+          500: "#8e8167",
+          600: "#6b5f49",
+          700: "#3a342a",
+          800: "#2b261e",
+          900: "#1f1b14",
+          950: "#1a1612",
+        },
+        // ── Amber accent (remaps `emerald-*` app-wide) ──
+        emerald: {
+          50: "#fffbeb",
+          100: "#fef3c7",
+          200: "#fde68a",
+          300: "#fcd34d",
+          400: "#fbbf24", // accent text / icons on dark
+          500: "#f59e0b", // primary action surface
+          600: "#d97706", // hover
+          700: "#b45309",
+          800: "#92400e",
+          900: "#78350f",
+          950: "#451a03",
+        },
         brand: {
-          50: "#ecfdf5",
-          100: "#d1fae5",
-          200: "#a7f3d0",
-          300: "#6ee7b7",
-          400: "#34d399",
-          500: "#10b981",
-          600: "#059669",
-          700: "#047857",
-          800: "#065f46",
-          900: "#064e3b",
-          950: "#022c22",
+          50: "#fffbeb",
+          100: "#fef3c7",
+          200: "#fde68a",
+          300: "#fcd34d",
+          400: "#fbbf24",
+          500: "#f59e0b",
+          600: "#d97706",
+          700: "#b45309",
+          800: "#92400e",
+          900: "#78350f",
+          950: "#451a03",
         },
       },
       animation: {

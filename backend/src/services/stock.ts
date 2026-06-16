@@ -2,10 +2,62 @@ import { db, schema } from "../db/index.js";
 import { logger } from "../utils/logger.js";
 import fs from "fs/promises";
 import path from "path";
+import dns from "dns/promises";
+import net from "net";
 
 const stockCache = new Map<string, Record<string, unknown>>();
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 const SYNC_INTERVAL_MS = 60_000; // 60 seconds
+
+// ── SSRF guard ───────────────────────────────────────────────
+// The stock connector dials an admin-supplied host:port. Even though the route
+// is super_admin-only, we block the cloud metadata service and link-local range
+// (the classic SSRF escalation target) as defense in depth. Private LAN ranges
+// are intentionally NOT blocked — self-hosted databases on a Docker/VPC network
+// are a legitimate, expected configuration here.
+function isBlockedIp(ip: string): boolean {
+  const v = net.isIP(ip);
+  if (v === 4) {
+    // 169.254.0.0/16 link-local (includes 169.254.169.254 metadata endpoint)
+    if (ip.startsWith("169.254.")) return true;
+    // 0.0.0.0/8 "this host" range
+    if (ip.startsWith("0.")) return true;
+  } else if (v === 6) {
+    const lower = ip.toLowerCase();
+    // fe80::/10 link-local, and IPv4-mapped link-local (::ffff:169.254.x.x)
+    if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) {
+      return true;
+    }
+    if (lower.includes("169.254.")) return true;
+    // fd00::/8 / fc00::/7 unique-local metadata variants left allowed (private LAN)
+  }
+  return false;
+}
+
+// Resolve the host and reject if ANY resolved address is blocked. Resolving
+// up-front also narrows DNS-rebinding (a name that resolves to a benign IP then
+// flips to 169.254.169.254) since we validate the addresses we will dial.
+async function assertHostAllowed(host: string): Promise<void> {
+  if (!host || typeof host !== "string") {
+    throw new Error("[stock] Missing database host");
+  }
+  let addresses: string[];
+  if (net.isIP(host)) {
+    addresses = [host];
+  } else {
+    try {
+      const records = await dns.lookup(host, { all: true });
+      addresses = records.map((r) => r.address);
+    } catch {
+      throw new Error(`[stock] Cannot resolve host: ${host}`);
+    }
+  }
+  for (const addr of addresses) {
+    if (isBlockedIp(addr)) {
+      throw new Error(`[stock] Blocked connection to restricted address (${addr})`);
+    }
+  }
+}
 
 // ── Core cache functions ─────────────────────────────────────
 
@@ -203,6 +255,8 @@ async function fetchMySQL(
 ): Promise<Record<string, unknown>[]> {
   const { createConnection } = await import("mysql2/promise");
 
+  await assertHostAllowed(config.host as string);
+
   const connection = await createConnection({
     host: config.host as string,
     port: (config.port as number) || 3306,
@@ -240,6 +294,8 @@ async function fetchPostgreSQL(
   config: Record<string, unknown>
 ): Promise<Record<string, unknown>[]> {
   const { Client } = await import("pg");
+
+  await assertHostAllowed(config.host as string);
 
   const client = new Client({
     host: config.host as string,

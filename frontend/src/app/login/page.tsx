@@ -11,7 +11,7 @@ export default function LoginPage() {
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-slate-950">
           <div className="flex items-center gap-3 text-slate-500">
-            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
             <span className="text-sm">Memuat...</span>
           </div>
         </div>
@@ -78,7 +78,7 @@ function LoginForm() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="flex items-center gap-3 text-slate-500">
-          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
           <span className="text-sm">Memuat...</span>
         </div>
       </div>
@@ -89,7 +89,7 @@ function LoginForm() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="flex items-center gap-3 text-slate-500">
-          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
           <span className="text-sm">Mengalihkan...</span>
         </div>
       </div>
@@ -112,12 +112,12 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 px-4">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.04),transparent_50%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(245,158,11,0.05),transparent_50%)]" />
 
       <div className="relative w-full max-w-md animate-scaleUp">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/10 flex items-center justify-center mx-auto mb-5 shadow-[0_0_30px_rgba(16,185,129,0.08)]">
-            <MessageCircle size={26} className="text-emerald-400" />
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 border border-amber-500/10 flex items-center justify-center mx-auto mb-5 shadow-[0_0_30px_rgba(245,158,11,0.10)]">
+            <MessageCircle size={26} className="text-amber-400" />
           </div>
           <h1 className="text-xl font-bold text-slate-100 tracking-tight">
             WA-AKG Business
@@ -143,7 +143,7 @@ function LoginForm() {
                   required
                   autoComplete="email"
                   autoFocus
-                  className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                  className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                 />
               </div>
             </div>
@@ -160,21 +160,21 @@ function LoginForm() {
                 placeholder="••••••••"
                 required
                 autoComplete="current-password"
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
               />
             </div>
 
             {error && (
-              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3.5 py-3 flex items-start gap-2.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 shrink-0" />
-                <p className="text-xs text-red-400 leading-relaxed">{error}</p>
+              <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 px-3.5 py-3 flex items-start gap-2.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 mt-1.5 shrink-0" />
+                <p className="text-xs text-rose-400 leading-relaxed">{error}</p>
               </div>
             )}
 
             <button
               type="submit"
               disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-500 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-amber-500 py-2.5 text-sm font-medium text-slate-950 hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? (
                 <>

@@ -1,7 +1,8 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { Request, Response, NextFunction } from "express";
 import { config } from "../config.js";
 
+// Authenticated endpoints: bucket by token so each user gets their own quota.
 function tokenKey(req: Request): string {
   const token = req.headers.authorization?.replace("Bearer ", "")
     || req.cookies?.refresh_token
@@ -10,10 +11,25 @@ function tokenKey(req: Request): string {
   return token.substring(0, 20) || "anonymous";
 }
 
+// Pre-auth endpoints (login/refresh): bucket by client IP. Using tokenKey here
+// collapsed every unauthenticated attempt into a single "anonymous" bucket,
+// which (a) let one attacker lock out all logins and (b) gave no per-attacker
+// brute-force limit. `ipKeyGenerator` handles IPv6 normalisation safely.
+function ipKey(req: Request): string {
+  return ipKeyGenerator(req.ip || "");
+}
+
+// Login: bucket by IP + submitted email so a shared NAT can't lock out everyone,
+// while still capping per-account guessing.
+function loginKey(req: Request): string {
+  const email = typeof req.body?.email === "string" ? req.body.email.toLowerCase() : "";
+  return ipKey(req) + "|" + email;
+}
+
 export const loginRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  keyGenerator: tokenKey,
+  keyGenerator: loginKey,
   message: { error: "Too many login attempts, please try again after 15 minutes" },
   standardHeaders: true,
   legacyHeaders: false,
@@ -22,7 +38,7 @@ export const loginRateLimit = rateLimit({
 export const refreshRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  keyGenerator: tokenKey,
+  keyGenerator: ipKey,
   message: { error: "Too many refresh attempts, please try again after 15 minutes" },
   standardHeaders: true,
   legacyHeaders: false,

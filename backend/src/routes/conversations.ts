@@ -10,6 +10,8 @@ import {
   transferConversation,
   resolveConversation,
   getQueueCount,
+  getNotesByWaNumber,
+  updateConversationNote,
   type ConversationStatus,
 } from "../services/conversation.js";
 import { sendWaMessage } from "../services/waGateway.js";
@@ -328,7 +330,17 @@ router.post("/:id/claim", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const updated = await claimConversation(id, user.sub);
+    const { conversation: updated, claimed } = await claimConversation(id, user.sub);
+
+    // Lost the atomic race — another CS claimed it first. Report the conflict
+    // instead of a false success so the UI can refresh to the real owner.
+    if (!claimed) {
+      res.status(409).json({
+        error: "Percakapan sudah diklaim oleh CS lain",
+        conversation: updated,
+      });
+      return;
+    }
 
     broadcast("conversation:claimed", { conversationId: id, claimedBy: user.sub, status: "active" });
     broadcast("conversation:status", { conversationId: id, status: "active", claimedBy: user.sub });
@@ -560,6 +572,69 @@ router.post("/:id/unhold", async (req: AuthRequest, res: Response) => {
     res.json({ success: true });
   } catch (err) {
     logger.error("[conversations] Unhold error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// All notes recorded for a WhatsApp number (history across its conversations).
+router.get("/by-number/:wa_number/notes", async (req: AuthRequest, res: Response) => {
+  try {
+    const waNumber = String(req.params.wa_number || "");
+    if (!waNumber || waNumber.length > 30 || /[^0-9+]/.test(waNumber)) {
+      res.status(400).json({ error: "Invalid wa_number format" });
+      return;
+    }
+    const notes = await getNotesByWaNumber(waNumber);
+    res.json({ notes });
+  } catch (err) {
+    logger.error("[conversations] Notes fetch error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Edit the note (review) on a conversation at any time, so any CS can record or
+// update context the rest of the team can see.
+router.patch("/:id/note", requireConversationAccess, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const user = getUser(req);
+    const { note } = req.body as Record<string, unknown>;
+
+    if (typeof note !== "string") {
+      res.status(400).json({ error: "note must be a string" });
+      return;
+    }
+    if (note.length > 4000) {
+      res.status(400).json({ error: "note is too long (max 4000 chars)" });
+      return;
+    }
+
+    const conv = (req as unknown as { conversation: ConversationWithName }).conversation;
+    const updated = await updateConversationNote(id, note);
+    if (!updated) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
+    // Notify everyone viewing so other CS see the edited note immediately.
+    broadcast("note:updated", {
+      conversationId: id,
+      waNumber: conv.wa_number,
+      note,
+      editedBy: user.sub,
+    });
+
+    createAuditLog({
+      userId: user.sub,
+      action: "update_note",
+      entityType: "conversations",
+      entityId: id,
+      details: JSON.stringify({ customer: conv.customer_name || conv.wa_number }),
+    });
+
+    res.json(updated);
+  } catch (err) {
+    logger.error("[conversations] Note update error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

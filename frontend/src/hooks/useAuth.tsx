@@ -10,7 +10,7 @@ import React, {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { setTokens, clearTokens, loadTokens, getAccessToken, get } from "@/lib/api";
+import { setTokens, clearTokens, getAccessToken, get } from "@/lib/api";
 
 interface User {
   id: string;
@@ -77,13 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [safeSetUser, safeSetLoading]);
 
   useEffect(() => {
-    const tokens = loadTokens();
-    if (tokens.access) {
-      fetchUser();
-    } else {
-      safeSetLoading(false);
-    }
-  }, [fetchUser, safeSetLoading]);
+    // Always attempt to restore the session via the httpOnly cookie. The access
+    // token is memory-only now, so on a fresh page load there is nothing in
+    // localStorage to gate on — the /api/auth/me call (sent with credentials)
+    // succeeds when the cookie is valid and 401s otherwise.
+    fetchUser();
+  }, [fetchUser]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -118,16 +117,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      // Always hit the backend so it can revoke the refresh token AND clear the
+      // httpOnly cookies. The access token is memory-only now, so on a fresh
+      // page load there is nothing to send in the header — but the cookie (sent
+      // via credentials: "include") authenticates the request. Skipping this
+      // call left the cookies in place, so middleware kept redirecting the user
+      // back in (the "stuck loading" loop).
       const token = getAccessToken();
-      if (token) {
-        await fetch("/api/auth/logout", {
-          method: "POST",
-          headers: { Authorization: "Bearer " + token },
-          credentials: "include",
-        });
-      }
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: token ? { Authorization: "Bearer " + token } : undefined,
+        credentials: "include",
+      });
     } catch {
-      // ignore
+      // ignore — proceed to clear client state regardless
     }
     clearTokens();
     setUserState(null);

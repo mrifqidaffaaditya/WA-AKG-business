@@ -57,9 +57,14 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/gateway", gatewayRoutes);
 
-// Authenticated media file serving
+// Authenticated media file serving. Token resolution order: httpOnly cookie
+// (preferred — never exposed to JS or logged in URLs), then Authorization
+// header, then a ?token= query param (legacy fallback, discouraged).
 app.get("/uploads/:filename", (req, res) => {
-  const token = req.headers.authorization?.replace("Bearer ", "") || (req.query.token as string);
+  const token =
+    req.cookies?.access_token ||
+    req.headers.authorization?.replace("Bearer ", "") ||
+    (req.query.token as string);
   if (!token) {
     res.status(401).json({ error: "Unauthorized" });
     return;

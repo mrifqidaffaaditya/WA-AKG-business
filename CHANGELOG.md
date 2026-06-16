@@ -1,5 +1,36 @@
 # Changelog
 
+## [3.5.0] — 2026-06-16
+
+### Added
+- **Customer Notes System** — Per-WhatsApp-number notes that persist across conversations. A new "Catatan" button in the chat header opens a panel showing the full note history for that number (newest first, with author, rating, and timestamp). The current conversation's note is highlighted. Notes can be edited at any time (not only at resolve) via an edit modal, so any CS can record or update context that the rest of the team sees. Edits broadcast a `note:updated` socket event so an open notes panel refreshes live for other agents.
+  - Backend: `getNotesByWaNumber` and `updateConversationNote` services; `GET /api/conversations/by-number/:wa_number/notes` and `PATCH /api/conversations/:id/note` routes (4000-char limit, audit-logged). Reuses the existing `conversations.review` column — no migration required, and historical resolve notes appear automatically.
+- **Reusable UI Primitives** — New `frontend/src/components/ui.tsx` with accessible `Toggle` (`role="switch"` + `aria-checked`), `Button`, `Spinner`, and `StatusBadge` components, replacing copy-pasted markup across the admin panels, chat, and shell.
+
+### Changed
+- **Full UI Redesign — Warm Charcoal + Amber** — Replaced the navy/slate + emerald palette with a warm charcoal base and amber accent across every page and component, driven by centralized tokens in `tailwind.config.ts` and `globals.css`. The former cool rainbow (blue/purple/violet/indigo/cyan/teal) was collapsed to a single sanctioned cool accent (`sky`, for the Bot status) plus warm tones; `red` danger states moved to `rose`. App background `#1a1612`, panels `#1f1b14`, accent amber `#f59e0b`.
+- **Accessibility** — Modal now has `role="dialog"`, `aria-modal`, a focus trap, focus restore on close, and background scroll-lock. Added a global keyboard `:focus-visible` ring, `aria-label`s on all icon-only buttons, `htmlFor`/`id` on form fields, and `aria-hidden` on decorative icons. Fixed WCAG contrast on amber-fill buttons (dark `slate-950` ink instead of white).
+- **Performance / Mobile** — Reduced heavy `backdrop-blur` (16–20px → 12–14px, and 6px on screens ≤640px) to cut scroll jank on mobile GPUs.
+- **Chat Composer Interactions** — Send button now shows an in-flight state and is disabled while sending (prevents double-send); on failure the message text, file, and reply are restored instead of lost. The reply textarea auto-grows and resets after send. Added client-side file-size validation (16 MB) before base64 encoding.
+- **Cookie-Based Authentication** — The access token is no longer persisted to `localStorage` (held in memory only), and is no longer appended to media URLs as a `?token=` query param. The backend `authenticate` middleware, `/uploads` route, and websocket handshake now read the existing httpOnly `access_token` cookie (Authorization header retained as a backward-compatible fallback). This removes the XSS token-exfiltration path and stops tokens leaking into access logs, browser history, and `Referer` headers.
+
+### Fixed
+- **Modal Focus Stealing** — Fixed a bug where typing a single character in a modal field (e.g. the resolve note) bounced focus to the close button. The focus-setup effect no longer depends on the per-render `onClose`/keydown callbacks (it runs only on open), and initial focus now targets the first input/textarea rather than the close (X) button. This also resolves the "Catatan Penyelesaian tidak berfungsi" report.
+- **Logout Stuck / Loop** — After the memory-only token change, logout skipped the backend call on a fresh page load (no in-memory token), leaving the httpOnly cookies in place so middleware kept redirecting the user back in. Logout now always calls `/api/auth/logout` with credentials so the server revokes the refresh token and clears cookies.
+- **Deactivated User Still Had Access** — A valid (unexpired) JWT kept working for up to 15 minutes after an admin deactivated a user. `authenticate` now verifies the account still exists and is active on every request, and deactivating a user (`is_active = false`) immediately revokes their refresh tokens.
+- **Avatar Gradient Purged by Tailwind** — `avatarGradient` built dynamic class names (`from-${hue}-500`) that Tailwind purges at build time, leaving avatars gradient-less. Replaced with complete static class strings; also guarded against empty user names (`userName[0]` crash).
+- **Conversation Claim Race Condition** — `claimConversation` now reports `rowsAffected` from its atomic guarded update; the claim route returns `409 Conflict` when a concurrent claim loses, instead of falsely reporting success with the winner's data. The UI shows a clear "Sudah diklaim CS lain" message.
+
+### Security
+- **JWT Secret Guard (all environments)** — Empty `APP_SECRET`/`REFRESH_SECRET` now fail startup in every environment (previously only in production), and the two secrets must differ. Prevents tokens being signed with an empty secret if `NODE_ENV` is unset.
+- **Login Rate-Limit Hardening** — Login is now keyed by client IP + submitted email and refresh by client IP (via `ipKeyGenerator`), instead of a token that collapsed all unauthenticated attempts into a single shared `"anonymous"` bucket (which allowed a single attacker to lock out all logins and gave no per-attacker brute-force limit).
+- **Constant-Time Login** — The login handler always runs exactly one `bcrypt.compare` (against a dummy hash when the email is unknown), removing the timing difference that allowed email enumeration.
+- **cs-config Input Validation** — `PUT /api/admin/cs-config` now validates field allowlist, types, lengths, and WhatsApp group JID format before persisting (was spreading `req.body` directly).
+- **SSRF Guard in Stock Connector** — The MySQL/PostgreSQL stock connector resolves the admin-supplied host and blocks the cloud metadata service / link-local range (`169.254.0.0/16`, `fe80::/10`) as defense in depth. Private LAN ranges remain allowed for legitimate self-hosted databases.
+
+### Notes
+- The repository's `.env` `APP_SECRET`/`REFRESH_SECRET` must be set to random, distinct 32+ byte values. If they still hold the `.env.example` placeholder values, JWTs can be forged — generate new secrets and restart the backend (all sessions will be invalidated).
+
 ## [3.4.2] — 2026-06-15
 
 ### Added

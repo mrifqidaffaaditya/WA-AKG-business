@@ -7,6 +7,13 @@ import { eq, and } from "drizzle-orm";
 
 const SALT_ROUNDS = 12;
 
+// Precomputed at module load: a valid bcrypt hash used as a comparison target
+// when a login email is not found or the account is inactive. Comparing against
+// it keeps the login code path's timing constant regardless of whether the
+// email exists, defeating timing-based email enumeration. It must be a REAL
+// bcrypt hash (not a malformed string) or bcrypt.compare would short-circuit.
+export const DUMMY_PASSWORD_HASH = bcrypt.hashSync("invalid-password-placeholder", SALT_ROUNDS);
+
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS);
 }

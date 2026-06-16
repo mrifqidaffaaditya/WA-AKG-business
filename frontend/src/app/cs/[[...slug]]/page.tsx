@@ -34,7 +34,7 @@ export default function CSPage() {
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-slate-950">
           <div className="flex items-center gap-3 text-slate-500">
-            <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
             <span className="text-sm font-medium">Memuat...</span>
           </div>
         </div>
@@ -464,7 +464,7 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
 
   return (
     <DashboardShell>
-      <div className="flex-1 flex min-h-0 bg-[#0A0F1C]">
+      <div className="flex-1 flex min-h-0 bg-slate-950">
         <div
           className={
             "shrink-0 " +
@@ -509,10 +509,10 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
 
       {newChatPopup && newChatPopup.visible && (
         <div className="fixed bottom-6 right-6 z-50 animate-bubble-in">
-          <div className="bg-[#0B1221]/95 backdrop-blur-lg border border-emerald-500/30 rounded-2xl p-4 shadow-2xl shadow-emerald-500/10 max-w-sm flex flex-col">
+          <div className="bg-slate-900/95 backdrop-blur-lg border border-amber-500/30 rounded-2xl p-4 shadow-2xl shadow-amber-500/10 max-w-sm flex flex-col">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400/20 to-emerald-600/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                <Bell size={20} className="text-emerald-400" />
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400/20 to-amber-600/20 border border-amber-500/30 flex items-center justify-center shrink-0">
+                <Bell size={20} className="text-amber-400" />
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-bold text-slate-100 truncate">
@@ -525,7 +525,7 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
                 <div className="flex items-center gap-2 mt-3">
                   <button
                     onClick={() => handleClaimFromPopup(newChatPopup.conv)}
-                    className="flex-1 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all cursor-pointer"
+                    className="flex-1 rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-slate-950 shadow-md shadow-amber-500/20 hover:bg-amber-400 active:scale-95 transition-all cursor-pointer"
                   >
                     Claim Chat
                   </button>

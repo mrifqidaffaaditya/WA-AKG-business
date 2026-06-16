@@ -20,6 +20,9 @@ import {
   CornerUpLeft,
   Play,
   Pause,
+  StickyNote,
+  Star,
+  Pencil,
 } from "lucide-react";
 
 interface Message {
@@ -47,6 +50,17 @@ interface Conversation {
   total_sessions?: number;
 }
 
+interface ConversationNote {
+  conversation_id: string;
+  note: string;
+  rating: number | null;
+  status: string;
+  author_id: string | null;
+  author_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ChatWindowProps {
   conversation: Conversation | null;
   soundEnabled?: boolean;
@@ -55,21 +69,21 @@ interface ChatWindowProps {
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   waiting: { label: "Waiting", color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-  active: { label: "Active", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  active: { label: "Active", color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   resolved: { label: "Selesai", color: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
-  bot: { label: "Bot", color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  bot: { label: "Bot", color: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
   hold: { label: "On Hold", color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
 };
 
 function avatarGradient(name: string): string {
   const hash = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const gradients = [
-    "from-emerald-500/40 to-teal-600/40",
-    "from-blue-500/40 to-cyan-600/40",
-    "from-violet-500/40 to-purple-600/40",
+    "from-amber-500/40 to-amber-600/40",
+    "from-sky-500/40 to-sky-600/40",
+    "from-rose-500/40 to-rose-600/40",
     "from-amber-500/40 to-orange-600/40",
     "from-rose-500/40 to-pink-600/40",
-    "from-sky-500/40 to-indigo-600/40",
+    "from-sky-500/40 to-amber-600/40",
   ];
   return gradients[hash % gradients.length];
 }
@@ -84,6 +98,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [newMessageBadge, setNewMessageBadge] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -102,6 +117,14 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [holdLoading, setHoldLoading] = useState(false);
+
+  // ── Notes (per-number history + edit current conversation's note) ──
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notes, setNotes] = useState<ConversationNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [editNoteOpen, setEditNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
 
   const handleHoldToggle = async () => {
     if (!conversation) return;
@@ -129,6 +152,47 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   const observerRef = useRef<IntersectionObserver | null>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Collapse the auto-grown composer back to one row (used after send/clear).
+  const resetTextareaHeight = useCallback(() => {
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+  }, []);
+
+  // Max upload size. Base64 inflates payload by ~33%, so a client-side guard
+  // avoids encoding huge files only to have the server reject them.
+  const MAX_FILE_BYTES = 16 * 1024 * 1024;
+
+  // Validate size, then stage the file (with an image preview when relevant).
+  const acceptFile = useCallback((f: File): void => {
+    if (f.size > MAX_FILE_BYTES) {
+      setModal({
+        isOpen: true,
+        title: "File terlalu besar",
+        message:
+          "Ukuran file maksimal 16 MB. File ini " +
+          (f.size / 1024 / 1024).toFixed(1) +
+          " MB.",
+        type: "warning",
+      });
+      return;
+    }
+    setFile(f);
+    setFilePreview(f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
+  }, []);
+
+  // Close the header dropdown when clicking outside it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [menuOpen]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = messageContainerRef.current;
@@ -247,6 +311,22 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
     }
   }, [loading, conversation, messages.length, scrollToBottom]);
 
+  // Fetch all notes recorded for this customer number (history across chats).
+  // Declared before the socket effect that depends on it.
+  const fetchNotes = useCallback(async (waNumber: string) => {
+    setNotesLoading(true);
+    try {
+      const res = await apiFetch("/api/conversations/by-number/" + encodeURIComponent(waNumber) + "/notes");
+      if (!res.ok) throw new Error("Failed to load notes");
+      const data = await res.json();
+      setNotes(data.notes || []);
+    } catch {
+      setNotes([]);
+    } finally {
+      setNotesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const socket = getIO();
     if (!socket || !conversation) return;
@@ -267,12 +347,25 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
       }
     };
 
+    const handleNoteUpdated = (data: { waNumber?: string }) => {
+      // If another CS edits a note for this number while the panel is open,
+      // refresh so everyone sees the latest context.
+      if (notesOpen && data.waNumber && data.waNumber === conversation.wa_number) {
+        fetchNotes(conversation.wa_number);
+      }
+    };
+
     socket.on("conversation:message", handleMessage);
-    return () => { socket.off("conversation:message", handleMessage); };
-  }, [conversation, scrollToBottom]);
+    socket.on("note:updated", handleNoteUpdated);
+    return () => {
+      socket.off("conversation:message", handleMessage);
+      socket.off("note:updated", handleNoteUpdated);
+    };
+  }, [conversation, scrollToBottom, notesOpen, fetchNotes]);
 
   const sendMessage = async () => {
-    if (!conversation || (!input.trim() && !file)) return;
+    if (!conversation || (!input.trim() && !file) || sending) return;
+    setSending(true);
 
     let contentType = "text";
     let fileData: string | null = null;
@@ -298,6 +391,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
         });
       } catch {
         setModal({ isOpen: true, title: "Error", message: "Gagal memproses file", type: "error" });
+        setSending(false);
         return;
       }
     }
@@ -309,10 +403,17 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
       ...(replyingTo && { quotedMessageId: replyingTo.id }),
     };
 
+    // Snapshot then optimistically clear the composer; restore on failure so the
+    // user doesn't lose their text.
+    const prevInput = input;
+    const prevFile = file;
+    const prevPreview = filePreview;
+    const prevReplyingTo = replyingTo;
     setInput("");
     setFile(null);
     setFilePreview(null);
     setReplyingTo(null);
+    resetTextareaHeight();
 
     try {
       const res = await apiFetch("/api/conversations/" + conversation.id + "/messages", {
@@ -322,7 +423,13 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
       if (!res.ok) throw new Error("Gagal mengirim");
       scrollToBottom("smooth");
     } catch {
+      setInput(prevInput);
+      setFile(prevFile);
+      setFilePreview(prevPreview);
+      setReplyingTo(prevReplyingTo);
       setModal({ isOpen: true, title: "Error", message: "Gagal mengirim pesan", type: "error" });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -343,6 +450,17 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
     setClaimLoading(true);
     try {
       const res = await apiFetch("/api/conversations/" + conversation.id + "/claim", { method: "POST" });
+      if (res.status === 409) {
+        // Lost the claim race — another CS got it first. Show a clear, non-alarming
+        // message; the socket "conversation:claimed" event will sync the real owner.
+        setModal({
+          isOpen: true,
+          title: "Sudah diklaim",
+          message: "Percakapan ini baru saja diambil oleh CS lain.",
+          type: "warning",
+        });
+        return;
+      }
       if (!res.ok) throw new Error("Claim failed");
     } catch {
       setModal({ isOpen: true, title: "Error", message: "Gagal mengklaim percakapan", type: "error" });
@@ -366,12 +484,44 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
     }
   };
 
+  const openNotes = () => {
+    if (!conversation) return;
+    setNotesOpen(true);
+    fetchNotes(conversation.wa_number);
+  };
+
+  const openEditNote = () => {
+    // Seed the editor with this conversation's existing note (if any in history).
+    const current = notes.find((n) => n.conversation_id === conversation?.id);
+    setNoteDraft(current?.note || "");
+    setEditNoteOpen(true);
+  };
+
+  const handleSaveNote = async () => {
+    if (!conversation) return;
+    setNoteSaving(true);
+    try {
+      const res = await apiFetch("/api/conversations/" + conversation.id + "/note", {
+        method: "PATCH",
+        body: JSON.stringify({ note: noteDraft }),
+      });
+      if (!res.ok) throw new Error("Failed to save note");
+      setEditNoteOpen(false);
+      // Refresh the history so the edit shows immediately for this CS too.
+      fetchNotes(conversation.wa_number);
+    } catch {
+      setModal({ isOpen: true, title: "Error", message: "Gagal menyimpan catatan", type: "error" });
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    setFile(f);
-    if (f.type.startsWith("image/")) setFilePreview(URL.createObjectURL(f));
-    else setFilePreview(null);
+    acceptFile(f);
+    // Reset the input so selecting the same file again re-triggers onChange.
+    e.target.value = "";
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -379,9 +529,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
     setDragOver(false);
     const f = e.dataTransfer.files?.[0];
     if (!f) return;
-    setFile(f);
-    if (f.type.startsWith("image/")) setFilePreview(URL.createObjectURL(f));
-    else setFilePreview(null);
+    acceptFile(f);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -393,9 +541,9 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
 
   if (!conversation) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[#0A0F1C]">
+      <div className="flex-1 flex items-center justify-center bg-slate-950">
         <div className="text-center animate-scaleUp">
-          <div className="w-20 h-20 rounded-2xl bg-[#0B1221] border border-slate-800/50 shadow-xl flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 rounded-2xl bg-slate-900 border border-slate-800/50 shadow-xl flex items-center justify-center mx-auto mb-6">
             <Clock size={36} className="text-slate-600" />
           </div>
           <h2 className="text-lg font-semibold text-slate-300 mb-1">Tidak Ada Obrolan</h2>
@@ -411,11 +559,12 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   const displayName = conversation.customer_name || formatPhone(conversation.wa_number);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0A0F1C] min-w-0 min-h-0 relative">
+    <div className="flex-1 flex flex-col bg-slate-950 min-w-0 min-h-0 relative">
       <div className="flex items-center gap-2 px-2 sm:px-4 py-2 sm:py-3 border-b border-slate-800/50 glass shrink-0 z-10">
         {onBack && (
           <button
             onClick={onBack}
+            aria-label="Kembali ke daftar percakapan"
             className="md:hidden p-2 -ml-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition-colors cursor-pointer shrink-0"
           >
             <ArrowLeft size={20} />
@@ -447,7 +596,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
           <div className="text-[10px] text-slate-400 truncate">
             {formatPhone(conversation.wa_number)}
             {(conversation.status === "active" || conversation.status === "hold") && conversation.claimed_by && (
-              <span className="ml-1.5 text-[9px] text-emerald-400/80">
+              <span className="ml-1.5 text-[9px] text-amber-400/80">
                 {conversation.claimed_by === user?.id
                   ? " (Anda)"
                   : ` (${conversation.claimed_by_name || "CS lain"})`}
@@ -461,7 +610,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
             <button
               onClick={handleClaim}
               disabled={claimLoading}
-              className="flex items-center gap-1 rounded-lg bg-emerald-500 px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-600 transition-all duration-200 disabled:opacity-50 shadow-lg shadow-emerald-500/20 active:scale-95 cursor-pointer"
+              className="flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-slate-950 hover:bg-amber-400 transition-all duration-200 disabled:opacity-50 shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer"
             >
               <CheckCircle size={14} />
               <span className="hidden sm:inline">Claim</span>
@@ -475,7 +624,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                 className={
                   "flex items-center gap-1 rounded-lg px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition-all duration-200 disabled:opacity-50 active:scale-95 cursor-pointer " +
                   (conversation.status === "hold"
-                    ? "bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg shadow-emerald-500/20"
+                    ? "bg-amber-500 text-slate-950 hover:bg-amber-400 shadow-lg shadow-amber-500/20"
                     : "bg-slate-800/80 border border-slate-700 text-slate-300 hover:bg-orange-500/10 hover:text-orange-400 hover:border-orange-500/20")
                 }
               >
@@ -491,15 +640,27 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
             (isOwnActiveOrHold || user?.role !== "cs") && (
               <button
                 onClick={() => setResolveModal(true)}
-                className="flex items-center gap-1 rounded-lg bg-slate-800/80 border border-slate-700 px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-slate-300 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all duration-200 cursor-pointer"
+                className="flex items-center gap-1 rounded-lg bg-slate-800/80 border border-slate-700 px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-slate-300 hover:bg-rose-500/10 hover:text-rose-400 hover:border-rose-500/20 transition-all duration-200 cursor-pointer"
               >
                 <CheckCircle size={14} />
                 <span className="hidden sm:inline">Resolve</span>
               </button>
             )}
-          <div className="relative">
+          <button
+            onClick={openNotes}
+            aria-label="Lihat catatan customer"
+            title="Catatan"
+            className="flex items-center gap-1 rounded-lg bg-slate-800/80 border border-slate-700 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-slate-300 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/20 transition-all duration-200 cursor-pointer"
+          >
+            <StickyNote size={14} />
+            <span className="hidden sm:inline">Catatan</span>
+          </button>
+          <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="Menu percakapan"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
               className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               <MoreVertical size={18} />
@@ -522,7 +683,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                     setMenuOpen(false);
                     setResolveModal(true);
                   }}
-                  className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-slate-700 transition-colors cursor-pointer"
+                  className="w-full text-left px-4 py-3 text-sm text-rose-400 hover:bg-slate-700 transition-colors cursor-pointer"
                 >
                   Tutup Chat (Resolve)
                 </button>
@@ -552,7 +713,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
           {loadingMore && (
             <div className="text-center py-4">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/40 border border-slate-700/50 backdrop-blur-sm">
-                <div className="w-4 h-4 rounded-full border-2 border-slate-500 border-t-emerald-500 animate-spin" />
+                <div className="w-4 h-4 rounded-full border-2 border-slate-500 border-t-amber-500 animate-spin" />
                 <span className="text-[12px] font-medium text-slate-300">
                   Memuat riwayat...
                 </span>
@@ -563,7 +724,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
           {loading && (
             <div className="flex-1 flex items-center justify-center min-h-[300px]">
               <div className="flex flex-col items-center gap-3 text-slate-500">
-                <div className="w-8 h-8 rounded-full border-2 border-slate-700 border-t-emerald-500 animate-spin" />
+                <div className="w-8 h-8 rounded-full border-2 border-slate-700 border-t-amber-500 animate-spin" />
                 <span className="text-sm font-medium">
                   Memuat percakapan...
                 </span>
@@ -619,15 +780,15 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                       (isCustomer
                         ? "bg-slate-800/80 border border-slate-700/60 text-slate-200 rounded-tl-sm"
                         : isBot
-                        ? "bg-blue-500/10 text-blue-100 border border-blue-500/20 rounded-tl-sm"
+                        ? "bg-sky-500/10 text-sky-100 border border-sky-500/20 rounded-tl-sm"
                         : isMine
-                        ? "bg-gradient-to-br from-emerald-600 to-emerald-700 text-white rounded-tr-sm shadow-lg shadow-emerald-900/20"
+                        ? "bg-gradient-to-br from-amber-600 to-amber-700 text-white rounded-tr-sm shadow-lg shadow-amber-900/20"
                         : "bg-slate-700/80 text-slate-100 border border-slate-600/50 rounded-tr-sm")
                     }
                   >
                     {msg.reply_to_content && (
-                      <div className="mb-2 p-2 border-l-2 border-emerald-500 bg-black/20 rounded-r-lg text-xs max-w-full">
-                        <span className="font-semibold text-emerald-400 block mb-0.5">
+                      <div className="mb-2 p-2 border-l-2 border-amber-500 bg-black/20 rounded-r-lg text-xs max-w-full">
+                        <span className="font-semibold text-amber-400 block mb-0.5">
                           {msg.reply_to_sender || "Pesan"}
                         </span>
                         <p className="text-slate-300 truncate">
@@ -664,7 +825,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                         className={
                           "flex items-center gap-3 p-3 rounded-xl mb-2 transition-colors cursor-pointer " +
                           (isMine
-                            ? "bg-emerald-700 hover:bg-emerald-800"
+                            ? "bg-amber-700 hover:bg-amber-800"
                             : "bg-slate-900/50 hover:bg-slate-900/80")
                         }
                       >
@@ -683,7 +844,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                           <span
                             className={
                               "text-[10px] " +
-                              (isMine ? "text-emerald-200" : "text-slate-400")
+                              (isMine ? "text-amber-200" : "text-slate-400")
                             }
                           >
                             Klik untuk mengunduh
@@ -706,7 +867,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                     <div
                       className={
                         "flex items-center justify-end gap-1 mt-1 " +
-                        (isMine ? "text-emerald-200" : "text-slate-400")
+                        (isMine ? "text-amber-200" : "text-slate-400")
                       }
                     >
                       <span className="text-[10px] font-medium">
@@ -720,7 +881,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                 </div>
                 <button
                   onClick={() => setReplyingTo(msg)}
-                  className="p-1.5 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer shrink-0"
+                  className="p-1.5 text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer shrink-0"
                   title="Balas pesan ini"
                 >
                   <CornerUpLeft size={16} />
@@ -737,7 +898,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
             scrollToBottom("smooth");
             setNewMessageBadge(false);
           }}
-          className="absolute bottom-[90px] right-6 z-20 flex items-center gap-2 rounded-full bg-emerald-500 pl-3 pr-4 py-2 text-sm font-semibold text-white shadow-lg shadow-black/40 hover:bg-emerald-600 hover:-translate-y-0.5 transition-all animate-slide-in-from-bottom cursor-pointer"
+          className="absolute bottom-[90px] right-6 z-20 flex items-center gap-2 rounded-full bg-amber-500 pl-3 pr-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-black/40 hover:bg-amber-400 hover:-translate-y-0.5 transition-all animate-slide-in-from-bottom cursor-pointer"
         >
           <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
             <ArrowDown size={14} />
@@ -747,7 +908,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
       )}
 
       {conversation?.status === "active" && quickReplies.length > 0 && (
-        <div className="bg-[#0B1221]/90 backdrop-blur-sm border-t border-slate-800/50 px-4 py-3 flex gap-2 overflow-x-auto shrink-0 z-10">
+        <div className="bg-slate-900/90 backdrop-blur-sm border-t border-slate-800/50 px-4 py-3 flex gap-2 overflow-x-auto shrink-0 z-10">
           {quickReplies.map((qr, i) => (
             <button
               key={i}
@@ -764,17 +925,17 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
 
       <div
         className={
-          "bg-[#0B1221]/90 backdrop-blur-sm p-3 sm:p-4 z-10 shrink-0 " +
+          "bg-slate-900/90 backdrop-blur-sm p-3 sm:p-4 z-10 shrink-0 " +
           (conversation?.status === "active" && quickReplies.length > 0
             ? ""
             : "border-t border-slate-800/50")
         }
       >
         {replyingTo && (
-          <div className="mb-3 p-3 border border-slate-850 rounded-xl bg-slate-800/40 flex items-start justify-between gap-3 animate-slideUp relative overflow-hidden animate-fadeIn">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />
+          <div className="mb-3 p-3 border border-slate-800 rounded-xl bg-slate-800/40 flex items-start justify-between gap-3 animate-slideUp relative overflow-hidden animate-fadeIn">
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" />
             <div className="flex-1 min-w-0 pl-1.5">
-              <span className="text-[10px] font-semibold text-emerald-400 block mb-0.5">
+              <span className="text-[10px] font-semibold text-amber-400 block mb-0.5">
                 Membalas ke {replyingTo.sender === "customer" ? (conversation?.customer_name || formatPhone(conversation?.wa_number)) : (replyingTo.cs_name || "CS")}
               </span>
               <p className="text-xs text-slate-300 truncate font-normal">
@@ -838,7 +999,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
           className={
             "relative flex items-end gap-2 p-2 rounded-2xl transition-all duration-200 " +
             (dragOver
-              ? "bg-emerald-500/10 border-2 border-dashed border-emerald-500"
+              ? "bg-amber-500/10 border-2 border-dashed border-amber-500"
               : "bg-slate-900/80 border border-slate-700")
           }
           onDragOver={(e) => {
@@ -857,17 +1018,26 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="shrink-0 p-3 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-xl transition-all cursor-pointer"
+            aria-label="Lampirkan file"
+            className="shrink-0 p-3 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-xl transition-all cursor-pointer"
             title="Lampirkan File"
           >
             <Paperclip size={20} />
           </button>
 
           <textarea
+            ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              // Auto-grow: reset to measure scrollHeight, then clamp to maxHeight.
+              const el = e.target;
+              el.style.height = "auto";
+              el.style.height = Math.min(el.scrollHeight, 120) + "px";
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Ketik balasan Anda..."
+            aria-label="Ketik balasan"
             rows={1}
             style={{ minHeight: "44px", maxHeight: "120px" }}
             className="flex-1 resize-none bg-transparent py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
@@ -875,18 +1045,23 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
 
           <button
             onClick={sendMessage}
-            disabled={!input.trim() && !file}
+            disabled={(!input.trim() && !file) || sending}
+            aria-label="Kirim pesan"
             className={
               "shrink-0 p-3 rounded-xl transition-all duration-200 flex items-center justify-center " +
-              (!input.trim() && !file
+              ((!input.trim() && !file) || sending
                 ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                : "bg-emerald-500 text-white hover:bg-emerald-600 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer")
+                : "bg-amber-500 text-slate-950 hover:bg-amber-400 shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer")
             }
           >
-            <Send
-              size={20}
-              className={input.trim() || file ? "translate-x-0.5" : ""}
-            />
+            {sending ? (
+              <span className="w-5 h-5 rounded-full border-2 border-slate-500 border-t-slate-300 animate-spin" />
+            ) : (
+              <Send
+                size={20}
+                className={input.trim() || file ? "translate-x-0.5" : ""}
+              />
+            )}
           </button>
         </div>
       </div>
@@ -910,7 +1085,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
             <textarea
               value={resolveReview}
               onChange={(e) => setResolveReview(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 resize-none h-24"
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 resize-none h-24"
               placeholder="Contoh: Kendala paket tertunda sudah diatasi..."
             />
           </div>
@@ -924,6 +1099,110 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
         message={modal.message}
         type={modal.type}
       />
+
+      <Modal
+        isOpen={notesOpen}
+        onClose={() => setNotesOpen(false)}
+        title="Catatan Customer"
+      >
+        <div className="mt-2">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <p className="text-xs text-slate-500">
+              Riwayat catatan untuk {formatPhone(conversation.wa_number)}
+            </p>
+            <button
+              onClick={openEditNote}
+              className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-amber-400 transition-colors cursor-pointer shrink-0"
+            >
+              <Pencil size={13} />
+              Edit Catatan Chat Ini
+            </button>
+          </div>
+
+          <div className="max-h-[50vh] overflow-y-auto space-y-2 -mx-1 px-1">
+            {notesLoading ? (
+              <div className="flex items-center justify-center py-8 text-slate-500">
+                <span className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin mr-2" />
+                <span className="text-xs">Memuat catatan...</span>
+              </div>
+            ) : notes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-slate-500 gap-2">
+                <StickyNote size={28} className="text-slate-600" aria-hidden="true" />
+                <span className="text-xs">Belum ada catatan untuk nomor ini</span>
+              </div>
+            ) : (
+              notes.map((n) => {
+                const isCurrent = n.conversation_id === conversation.id;
+                return (
+                  <div
+                    key={n.conversation_id}
+                    className={
+                      "rounded-xl border p-3 " +
+                      (isCurrent
+                        ? "bg-amber-500/5 border-amber-500/30"
+                        : "bg-slate-900 border-slate-800")
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs font-semibold text-slate-300 truncate">
+                          {n.author_name || "CS"}
+                        </span>
+                        {isCurrent && (
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/25 font-semibold">
+                            Chat ini
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {n.rating != null && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-amber-400">
+                            <Star size={11} className="fill-amber-400" />
+                            {n.rating}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-500">{timeAgo(n.updated_at)}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-300 whitespace-pre-wrap break-words">{n.note}</p>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={editNoteOpen}
+        onClose={() => setEditNoteOpen(false)}
+        title="Edit Catatan"
+      >
+        <div className="mt-2 space-y-4">
+          <p className="text-xs text-slate-500">
+            Catatan ini terlihat oleh semua CS pada chat dengan {formatPhone(conversation.wa_number)}.
+          </p>
+          <textarea
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            aria-label="Isi catatan"
+            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 resize-none h-32"
+            placeholder="Contoh: Customer minta dihubungi setelah jam 5 sore..."
+          />
+          <button
+            onClick={handleSaveNote}
+            disabled={noteSaving}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 py-2.5 text-sm font-semibold text-slate-950 transition-all disabled:opacity-50 cursor-pointer"
+          >
+            {noteSaving ? (
+              <span className="w-4 h-4 rounded-full border-2 border-slate-700 border-t-slate-900 animate-spin" />
+            ) : (
+              <CheckCircle size={16} />
+            )}
+            Simpan Catatan
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

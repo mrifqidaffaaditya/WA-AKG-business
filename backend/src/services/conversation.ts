@@ -127,6 +127,80 @@ export async function getConversation(
   };
 }
 
+export interface ConversationNote {
+  conversation_id: string;
+  note: string;
+  rating: number | null;
+  status: string;
+  author_id: string | null;
+  author_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * All notes recorded for a WhatsApp number, newest first. A "note" is the
+ * `review` field on a conversation — the CS-authored resolution/context note.
+ * Returns history across every conversation that number has had, so a CS can
+ * see what previous CS recorded for the same customer.
+ */
+export async function getNotesByWaNumber(waNumber: string): Promise<ConversationNote[]> {
+  const rows = await db
+    .select({
+      conversation_id: schema.conversations.id,
+      note: schema.conversations.review,
+      rating: schema.conversations.rating,
+      status: schema.conversations.status,
+      author_id: schema.conversations.claimed_by,
+      author_name: schema.users.name,
+      created_at: schema.conversations.created_at,
+      updated_at: schema.conversations.updated_at,
+    })
+    .from(schema.conversations)
+    .leftJoin(schema.users, eq(schema.conversations.claimed_by, schema.users.id))
+    .where(
+      and(
+        eq(schema.conversations.wa_number, waNumber),
+        sql`${schema.conversations.review} IS NOT NULL AND ${schema.conversations.review} != ''`
+      )
+    )
+    .orderBy(desc(schema.conversations.updated_at));
+
+  return rows.map((r) => ({
+    conversation_id: r.conversation_id,
+    note: r.note || "",
+    rating: r.rating,
+    status: r.status,
+    author_id: r.author_id,
+    author_name: r.author_name,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+}
+
+/**
+ * Set/replace the note (review) on a single conversation. Used by the chat
+ * panel's "edit note" action so CS can update context at any time, not only at
+ * resolve. Returns the updated row (or null if the conversation is gone).
+ */
+export async function updateConversationNote(
+  id: string,
+  note: string
+): Promise<typeof schema.conversations.$inferSelect | null> {
+  const now = new Date().toISOString();
+  await db
+    .update(schema.conversations)
+    .set({ review: note, updated_at: now })
+    .where(eq(schema.conversations.id, id));
+
+  const rows = await db
+    .select()
+    .from(schema.conversations)
+    .where(eq(schema.conversations.id, id))
+    .limit(1);
+  return rows.length > 0 ? rows[0] : null;
+}
+
 export async function updateConversationStatus(
   id: string,
   status: ConversationStatus
@@ -165,26 +239,31 @@ export async function updateConversationRating(
 export async function claimConversation(
   conversationId: string,
   csId: string
-): Promise<typeof schema.conversations.$inferSelect> {
+): Promise<{ conversation: typeof schema.conversations.$inferSelect; claimed: boolean }> {
   const now = new Date().toISOString();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(schema.conversations)
-      .set({ claimed_by: csId, status: "active", warning_sent: false, updated_at: now })
-      .where(
-        and(
-          eq(schema.conversations.id, conversationId),
-          inArray(schema.conversations.status, ["bot", "waiting"])
-        )
-      );
-  });
+
+  // The guarded UPDATE (status IN bot/waiting) is the atomic gate: exactly one
+  // concurrent claimer mutates the row, the rest affect 0 rows. `rowsAffected`
+  // tells THIS caller whether it won, so the route can return 409 on a loss
+  // instead of falsely reporting success with the winner's data.
+  const result = await db
+    .update(schema.conversations)
+    .set({ claimed_by: csId, status: "active", warning_sent: false, updated_at: now })
+    .where(
+      and(
+        eq(schema.conversations.id, conversationId),
+        inArray(schema.conversations.status, ["bot", "waiting"])
+      )
+    );
+
+  const claimed = (result as { rowsAffected?: number }).rowsAffected !== 0;
 
   const rows = await db
     .select()
     .from(schema.conversations)
     .where(eq(schema.conversations.id, conversationId))
     .limit(1);
-  return rows[0];
+  return { conversation: rows[0], claimed };
 }
 
 export async function transferConversation(

@@ -31,6 +31,76 @@ const defaultConfig: CsConfig = {
   waGroupJid: "",
 };
 
+const ALLOWED_CS_CONFIG_FIELDS = [
+  "signatureEnabled",
+  "signatureTemplate",
+  "quickReplies",
+  "autoReplyClaimEnabled",
+  "autoReplyClaim",
+  "autoReplyResolveEnabled",
+  "autoReplyResolve",
+  "waGroupNotifEnabled",
+  "waGroupJid",
+];
+
+const BOOLEAN_FIELDS = [
+  "signatureEnabled",
+  "autoReplyClaimEnabled",
+  "autoReplyResolveEnabled",
+  "waGroupNotifEnabled",
+];
+
+const STRING_FIELDS = [
+  "signatureTemplate",
+  "autoReplyClaim",
+  "autoReplyResolve",
+  "waGroupJid",
+];
+
+const MAX_STRING_LEN = 4000;
+
+/**
+ * Validate a partial cs-config payload before it is persisted. The update path
+ * previously spread req.body directly, so wrong types (e.g. a number where a
+ * boolean is expected) or unknown keys could be written. Returns an error
+ * message, or null when the payload is acceptable.
+ */
+export function validateCsConfigFields(body: Record<string, unknown>): string | null {
+  const unknown = Object.keys(body).filter((k) => !ALLOWED_CS_CONFIG_FIELDS.includes(k));
+  if (unknown.length > 0) {
+    return `Unknown field(s): ${unknown.join(", ")}`;
+  }
+  for (const f of BOOLEAN_FIELDS) {
+    if (body[f] !== undefined && typeof body[f] !== "boolean") {
+      return `${f} must be a boolean`;
+    }
+  }
+  for (const f of STRING_FIELDS) {
+    if (body[f] !== undefined) {
+      if (typeof body[f] !== "string") return `${f} must be a string`;
+      if ((body[f] as string).length > MAX_STRING_LEN) return `${f} is too long`;
+    }
+  }
+  if (body.quickReplies !== undefined) {
+    if (
+      !Array.isArray(body.quickReplies) ||
+      !body.quickReplies.every((q) => typeof q === "string")
+    ) {
+      return "quickReplies must be an array of strings";
+    }
+    if ((body.quickReplies as string[]).length > 50) {
+      return "quickReplies cannot exceed 50 entries";
+    }
+  }
+  if (body.waGroupJid !== undefined && body.waGroupJid !== "") {
+    // WhatsApp group JIDs look like 123-456@g.us; reject anything else early.
+    if (!/^[0-9]+(-[0-9]+)?@g\.us$/.test(body.waGroupJid as string)) {
+      return "waGroupJid must be a valid WhatsApp group JID (e.g. 123456-789@g.us)";
+    }
+  }
+  return null;
+}
+
 export async function getCsConfig(): Promise<CsConfig> {
   try {
     const rows = await db.select().from(schema.csConfig).limit(1);

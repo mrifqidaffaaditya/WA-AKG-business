@@ -1,8 +1,24 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../services/auth.js";
+import { db, schema } from "../db/index.js";
+import { eq } from "drizzle-orm";
 
 export interface AuthRequest extends Request {
   user?: { sub: string; role: string };
+}
+
+// Extract the access token, preferring the httpOnly cookie (set at login) and
+// falling back to the Authorization header for backward compatibility and
+// non-browser clients. Cookie-first means the token never needs to live in
+// JS-readable storage, removing the XSS exfiltration path.
+export function extractToken(req: Request): string | null {
+  const cookieToken = (req as Request & { cookies?: Record<string, string> }).cookies?.access_token;
+  if (cookieToken) return cookieToken;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.split(" ")[1] || null;
+  }
+  return null;
 }
 
 const ROLE_LEVEL: Record<string, number> = {
@@ -32,20 +48,35 @@ export function canModifyUser(
   return getRoleLevel(actorRole) > getRoleLevel(targetRole);
 }
 
-export function authenticate(
+export async function authenticate(
   req: AuthRequest,
   res: Response,
   next: NextFunction
-): void {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+): Promise<void> {
+  const token = extractToken(req);
+  if (!token) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  const token = authHeader.split(" ")[1];
   try {
     const payload = verifyAccessToken(token);
+
+    // JWTs are stateless, so a valid (unexpired) token would otherwise keep
+    // working for up to 15 min after an admin deactivates or deletes the user.
+    // Verify the account still exists and is active on every request so
+    // deactivation takes effect immediately.
+    const rows = await db
+      .select({ is_active: schema.users.is_active })
+      .from(schema.users)
+      .where(eq(schema.users.id, payload.sub))
+      .limit(1);
+
+    if (rows.length === 0 || !rows[0].is_active) {
+      res.status(401).json({ error: "Account inactive or not found" });
+      return;
+    }
+
     req.user = { sub: payload.sub, role: payload.role };
     next();
   } catch {
@@ -72,13 +103,12 @@ export function optionalAuth(
   _res: Response,
   next: NextFunction
 ): void {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  const token = extractToken(req);
+  if (!token) {
     next();
     return;
   }
 
-  const token = authHeader.split(" ")[1];
   try {
     const payload = verifyAccessToken(token);
     req.user = { sub: payload.sub, role: payload.role };

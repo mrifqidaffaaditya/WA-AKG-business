@@ -6,6 +6,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import DashboardShell from "@/components/DashboardShell";
 import Modal from "@/components/Modal";
+import { Toggle, Spinner } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { connect, getIO } from "@/lib/socket";
 import { apiFetch } from "@/lib/api";
@@ -48,7 +49,7 @@ export default function AdminPage() {
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-slate-950">
           <div className="flex items-center gap-3 text-slate-500">
-            <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
             <span className="text-sm">Memuat...</span>
           </div>
         </div>
@@ -97,7 +98,7 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="flex items-center gap-3 text-slate-500">
-          <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
           <span className="text-sm">Memuat...</span>
         </div>
       </div>
@@ -178,7 +179,7 @@ function DashboardPanel() {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="flex items-center gap-3 text-slate-500">
-          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
           <span className="text-sm">Memuat data...</span>
         </div>
       </div>
@@ -197,19 +198,19 @@ function DashboardPanel() {
       label: "Total Percakapan",
       value: stats.totalConversations,
       icon: MessageSquare,
-      gradient: "from-blue-500/10 to-blue-500/5",
-      iconBg: "bg-blue-500/15",
-      iconColor: "text-blue-400",
-      border: "border-blue-500/10",
+      gradient: "from-sky-500/10 to-sky-500/5",
+      iconBg: "bg-sky-500/15",
+      iconColor: "text-sky-400",
+      border: "border-sky-500/10",
     },
     {
       label: "Aktif",
       value: stats.activeConversations,
       icon: Zap,
-      gradient: "from-emerald-500/10 to-emerald-500/5",
-      iconBg: "bg-emerald-500/15",
-      iconColor: "text-emerald-400",
-      border: "border-emerald-500/10",
+      gradient: "from-amber-500/10 to-amber-500/5",
+      iconBg: "bg-amber-500/15",
+      iconColor: "text-amber-400",
+      border: "border-amber-500/10",
     },
     {
       label: "Waiting",
@@ -234,29 +235,29 @@ function DashboardPanel() {
       value: stats.onlineCs,
       suffix: `/ ${stats.totalCs}`,
       icon: Users,
-      gradient: "from-purple-500/10 to-purple-500/5",
-      iconBg: "bg-purple-500/15",
-      iconColor: "text-purple-400",
-      border: "border-purple-500/10",
+      gradient: "from-rose-500/10 to-rose-500/5",
+      iconBg: "bg-rose-500/15",
+      iconColor: "text-rose-400",
+      border: "border-rose-500/10",
       pulse: stats.onlineCs > 0,
     },
     {
       label: "Total Customer",
       value: stats.totalCustomers,
       icon: TrendingUp,
-      gradient: "from-teal-500/10 to-teal-500/5",
-      iconBg: "bg-teal-500/15",
-      iconColor: "text-teal-400",
-      border: "border-teal-500/10",
+      gradient: "from-amber-500/10 to-amber-500/5",
+      iconBg: "bg-amber-500/15",
+      iconColor: "text-amber-400",
+      border: "border-amber-500/10",
     },
     {
       label: "Pesan Hari Ini",
       value: stats.todayMessages,
       icon: MessageCircle,
-      gradient: "from-cyan-500/10 to-cyan-500/5",
-      iconBg: "bg-cyan-500/15",
-      iconColor: "text-cyan-400",
-      border: "border-cyan-500/10",
+      gradient: "from-sky-500/10 to-sky-500/5",
+      iconBg: "bg-sky-500/15",
+      iconColor: "text-sky-400",
+      border: "border-sky-500/10",
     },
     {
       label: "Rata-rata Rating",
@@ -271,9 +272,9 @@ function DashboardPanel() {
 
   const total = stats.totalConversations || 1;
   const statusBars = [
-    { label: "Bot", count: stats.botConversations, color: "bg-blue-500", pct: ((stats.botConversations / total) * 100).toFixed(1) },
+    { label: "Bot", count: stats.botConversations, color: "bg-sky-500", pct: ((stats.botConversations / total) * 100).toFixed(1) },
     { label: "Waiting", count: stats.waitingConversations, color: "bg-amber-500", pct: ((stats.waitingConversations / total) * 100).toFixed(1) },
-    { label: "Active", count: stats.activeConversations, color: "bg-emerald-500", pct: ((stats.activeConversations / total) * 100).toFixed(1) },
+    { label: "Active", count: stats.activeConversations, color: "bg-amber-500", pct: ((stats.activeConversations / total) * 100).toFixed(1) },
     { label: "Resolved", count: stats.resolvedConversations, color: "bg-slate-500", pct: ((stats.resolvedConversations / total) * 100).toFixed(1) },
   ];
 
@@ -281,8 +282,8 @@ function DashboardPanel() {
     <div className="max-w-6xl animate-fadeIn">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-            <LayoutDashboard size={16} className="text-emerald-400" />
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <LayoutDashboard size={16} className="text-amber-400" />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-slate-100">Dashboard</h2>
@@ -295,7 +296,7 @@ function DashboardPanel() {
               Live · {lastUpdate.toLocaleTimeString("id-ID")}
             </span>
           )}
-          <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${pulse ? "bg-emerald-500 shadow-lg shadow-emerald-500/50" : "bg-slate-700"}`} />
+          <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${pulse ? "bg-amber-500 shadow-lg shadow-amber-500/50" : "bg-slate-700"}`} />
         </div>
       </div>
 
@@ -313,7 +314,7 @@ function DashboardPanel() {
               <div className={"rounded-lg p-2 relative " + card.iconBg}>
                 <card.icon size={17} className={card.iconColor} />
                 {"pulse" in card && card.pulse && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-slate-950 animate-pulse" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500 border-2 border-slate-950 animate-pulse" />
                 )}
               </div>
               <ArrowUpRight
@@ -485,16 +486,16 @@ function CSPerformanceTable() {
                 <td className="px-3 py-3 text-slate-200 font-medium text-xs">{cs.name}</td>
                 <td className="px-3 py-3 text-center">
                   <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${
-                    cs.role === "admin" ? "bg-blue-500/10 text-blue-400" : "bg-emerald-500/10 text-emerald-400"
+                    cs.role === "admin" ? "bg-sky-500/10 text-sky-400" : "bg-amber-500/10 text-amber-400"
                   }`}>
                     {cs.role === "admin" ? "Admin" : "CS"}
                   </span>
                 </td>
                 <td className="px-3 py-3 text-center">
                   <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                    cs.is_online ? "bg-emerald-500/10 text-emerald-400" : "bg-slate-700/50 text-slate-500"
+                    cs.is_online ? "bg-amber-500/10 text-amber-400" : "bg-slate-700/50 text-slate-500"
                   }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${cs.is_online ? "bg-emerald-400" : "bg-slate-600"}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${cs.is_online ? "bg-amber-400" : "bg-slate-600"}`} />
                     {cs.is_online ? "Online" : "Offline"}
                   </span>
                 </td>
@@ -613,7 +614,7 @@ function BotConfigPanel() {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="flex items-center gap-3 text-slate-500">
-          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
           <span className="text-sm">Memuat...</span>
         </div>
       </div>
@@ -623,8 +624,8 @@ function BotConfigPanel() {
   return (
     <div className="max-w-2xl animate-fadeIn">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-          <Bot size={16} className="text-emerald-400" />
+        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+          <Bot size={16} className="text-amber-400" />
         </div>
         <div>
           <h2 className="text-lg font-semibold text-slate-100">Konfigurasi Bot</h2>
@@ -642,7 +643,7 @@ function BotConfigPanel() {
             value={form.persona_name}
             onChange={(e) => setForm((f) => ({ ...f, persona_name: e.target.value }))}
             placeholder="Contoh: Aini, CS Bot Ramah"
-            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
           />
         </div>
 
@@ -655,7 +656,7 @@ function BotConfigPanel() {
             onChange={(e) => setForm((f) => ({ ...f, system_prompt: e.target.value }))}
             rows={6}
             placeholder="Instruksi utama untuk bot AI..."
-            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none transition-all font-mono"
+            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none transition-all font-mono"
           />
         </div>
 
@@ -668,7 +669,7 @@ function BotConfigPanel() {
             onChange={(e) => setForm((f) => ({ ...f, business_info: e.target.value }))}
             rows={4}
             placeholder="Jam operasional, alamat, kebijakan, FAQ..."
-            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none transition-all"
+            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none transition-all"
           />
         </div>
 
@@ -681,7 +682,7 @@ function BotConfigPanel() {
             value={form.escalation_keywords}
             onChange={(e) => setForm((f) => ({ ...f, escalation_keywords: e.target.value }))}
             placeholder="bicara admin, CS, supervisor"
-            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
           />
         </div>
 
@@ -702,7 +703,7 @@ function BotConfigPanel() {
               }}
               min={1}
               max={1440}
-              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
             />
           </div>
           <div>
@@ -721,35 +722,25 @@ function BotConfigPanel() {
               }}
               min={0}
               max={1440}
-              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
             />
           </div>
           <div className="flex flex-col justify-end pb-1 col-span-2 sm:col-span-1">
             <label className="text-xs font-medium text-slate-400 mb-2 block">
               Auto Close
             </label>
-            <button
-              type="button"
-              onClick={() => setForm((f) => ({ ...f, auto_close_enabled: !f.auto_close_enabled }))}
-              className={
-                "relative w-11 h-6 rounded-full transition-colors " +
-                (form.auto_close_enabled ? "bg-emerald-500" : "bg-slate-700")
-              }
-            >
-              <span
-                className={
-                  "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform " +
-                  (form.auto_close_enabled ? "translate-x-5" : "translate-x-0")
-                }
-              />
-            </button>
+            <Toggle
+              checked={form.auto_close_enabled}
+              onChange={(next) => setForm((f) => ({ ...f, auto_close_enabled: next }))}
+              label="Aktifkan auto close sesi"
+            />
           </div>
         </div>
 
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-slate-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
         >
           <Save size={15} />
           {saving ? "Menyimpan..." : "Simpan Konfigurasi"}
@@ -863,7 +854,7 @@ function StockConfigPanel() {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="flex items-center gap-3 text-slate-500">
-          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+          <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
           <span className="text-sm">Memuat...</span>
         </div>
       </div>
@@ -873,8 +864,8 @@ function StockConfigPanel() {
   return (
     <div className="max-w-3xl animate-fadeIn">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-          <Package size={16} className="text-emerald-400" />
+        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+          <Package size={16} className="text-amber-400" />
         </div>
         <div>
           <h2 className="text-lg font-semibold text-slate-100">Konfigurasi Stok</h2>
@@ -890,7 +881,7 @@ function StockConfigPanel() {
           <select
             value={sourceType}
             onChange={(e) => setSourceType(e.target.value as typeof sourceType)}
-            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
           >
             <option value="google_sheets">Google Sheets</option>
             <option value="mysql">MySQL</option>
@@ -921,11 +912,11 @@ function StockConfigPanel() {
               setJsonError("");
             }}
             rows={12}
-            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none transition-all"
+            className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none transition-all"
           />
           {jsonError && (
-            <p className="text-xs text-red-400 mt-1.5 flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-red-400" />
+            <p className="text-xs text-rose-400 mt-1.5 flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full bg-rose-400" />
               {jsonError}
             </p>
           )}
@@ -933,28 +924,18 @@ function StockConfigPanel() {
 
         <div className="flex items-center gap-3">
           <label className="text-xs font-medium text-slate-400">Aktifkan Sync Stok</label>
-          <button
-            type="button"
-            onClick={() => setIsActive(!isActive)}
-            className={
-              "relative w-11 h-6 rounded-full transition-colors " +
-              (isActive ? "bg-emerald-500" : "bg-slate-700")
-            }
-          >
-            <span
-              className={
-                "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform " +
-                (isActive ? "translate-x-5" : "translate-x-0")
-              }
-            />
-          </button>
+          <Toggle
+            checked={isActive}
+            onChange={setIsActive}
+            label="Aktifkan sinkronisasi stok"
+          />
         </div>
 
         <div className="flex items-center gap-3 pt-1">
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-slate-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
           >
             <Save size={15} />
             {saving ? "Menyimpan..." : "Simpan"}
@@ -1151,9 +1132,9 @@ function UserPanel() {
   };
 
   const roleColors: Record<string, string> = {
-    super_admin: "bg-purple-500/15 text-purple-400 border-purple-500/20",
-    admin: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-    cs: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+    super_admin: "bg-rose-500/15 text-rose-400 border-rose-500/20",
+    admin: "bg-sky-500/15 text-sky-400 border-sky-500/20",
+    cs: "bg-amber-500/15 text-amber-400 border-amber-500/20",
   };
 
   const roleLabels: Record<string, string> = {
@@ -1183,8 +1164,8 @@ function UserPanel() {
     <div className="animate-fadeIn">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-            <Users size={16} className="text-emerald-400" />
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <Users size={16} className="text-amber-400" />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-slate-100">Manajemen User</h2>
@@ -1193,7 +1174,7 @@ function UserPanel() {
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-emerald-600 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-amber-500 px-3.5 py-2 text-sm font-medium text-slate-950 hover:bg-amber-400 transition-colors"
         >
           <UserPlus size={15} />
           Tambah User
@@ -1203,7 +1184,7 @@ function UserPanel() {
       {showCreate && (
         <form
           onSubmit={handleCreate}
-          className="rounded-xl border border-emerald-500/20 bg-slate-900 p-5 mb-4 space-y-4"
+          className="rounded-xl border border-amber-500/20 bg-slate-900 p-5 mb-4 space-y-4"
         >
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1213,7 +1194,7 @@ function UserPanel() {
                 value={createForm.name}
                 onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
                 required
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 transition-all"
+                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-all"
               />
             </div>
             <div>
@@ -1223,7 +1204,7 @@ function UserPanel() {
                 value={createForm.email}
                 onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
                 required
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 transition-all"
+                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-all"
               />
             </div>
             <div>
@@ -1234,7 +1215,7 @@ function UserPanel() {
                 onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
                 required
                 minLength={6}
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 transition-all"
+                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-all"
               />
             </div>
             <div>
@@ -1242,7 +1223,7 @@ function UserPanel() {
               <select
                 value={createForm.role}
                 onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value as User["role"] }))}
-                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-all"
+                className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 transition-all"
               >
                 {allowedRoles.map((r) => (
                   <option key={r} value={r}>{roleLabels[r] || r}</option>
@@ -1261,7 +1242,7 @@ function UserPanel() {
             <button
               type="submit"
               disabled={creating}
-              className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
+              className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-slate-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
             >
               {creating ? "Membuat..." : "Simpan"}
             </button>
@@ -1272,7 +1253,7 @@ function UserPanel() {
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="flex items-center gap-3 text-slate-500">
-            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
             <span className="text-sm">Memuat user...</span>
           </div>
         </div>
@@ -1312,14 +1293,14 @@ function UserPanel() {
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className={"inline-flex items-center gap-1.5 text-xs " + (u.is_active ? "text-emerald-400" : "text-slate-500")}>
-                      <span className={"w-1.5 h-1.5 rounded-full " + (u.is_active ? "bg-emerald-400" : "bg-slate-600")} />
+                    <span className={"inline-flex items-center gap-1.5 text-xs " + (u.is_active ? "text-amber-400" : "text-slate-500")}>
+                      <span className={"w-1.5 h-1.5 rounded-full " + (u.is_active ? "bg-amber-400" : "bg-slate-600")} />
                       {u.is_active ? "Aktif" : "Nonaktif"}
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className={"inline-flex items-center gap-1.5 text-xs " + (u.is_online ? "text-emerald-400 font-medium" : "text-slate-500")}>
-                      <span className={"w-1.5 h-1.5 rounded-full " + (u.is_online ? "bg-emerald-400 animate-pulse" : "bg-slate-600")} />
+                    <span className={"inline-flex items-center gap-1.5 text-xs " + (u.is_online ? "text-amber-400 font-medium" : "text-slate-500")}>
+                      <span className={"w-1.5 h-1.5 rounded-full " + (u.is_online ? "bg-amber-400 animate-pulse" : "bg-slate-600")} />
                       {u.is_online ? "Online" : "Offline"}
                     </span>
                   </td>
@@ -1343,7 +1324,7 @@ function UserPanel() {
                             ? "opacity-30 cursor-not-allowed bg-slate-800 text-slate-600"
                             : u.is_active
                               ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-                              : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20")
+                              : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20")
                         }
                       >
                         {u.is_active ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
@@ -1362,7 +1343,7 @@ function UserPanel() {
                           "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors " +
                           (!canModify(u)
                             ? "opacity-30 cursor-not-allowed bg-slate-800 text-slate-600"
-                            : "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20")
+                            : "bg-sky-500/10 text-sky-400 hover:bg-sky-500/20")
                         }
                       >
                         <Pencil size={13} />
@@ -1382,7 +1363,7 @@ function UserPanel() {
                           "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors " +
                           (!canModify(u)
                             ? "opacity-30 cursor-not-allowed bg-slate-800 text-slate-600"
-                            : "bg-red-500/10 text-red-400 hover:bg-red-500/20")
+                            : "bg-rose-500/10 text-rose-400 hover:bg-rose-500/20")
                         }
                       >
                         <Trash2 size={13} />
@@ -1421,7 +1402,7 @@ function UserPanel() {
               type="text"
               value={editForm.name}
               onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-all"
+              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 transition-all"
             />
           </div>
           <div>
@@ -1430,7 +1411,7 @@ function UserPanel() {
               type="email"
               value={editForm.email}
               onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-all"
+              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 transition-all"
             />
           </div>
           <div>
@@ -1439,7 +1420,7 @@ function UserPanel() {
               value={editForm.role}
               onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as User["role"] }))}
               disabled={!canModify(editTarget!)}
-              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-all disabled:opacity-50"
+              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 transition-all disabled:opacity-50"
             >
               {allowedRoles.map((r) => (
                 <option key={r} value={r}>{roleLabels[r] || r}</option>
@@ -1448,21 +1429,11 @@ function UserPanel() {
           </div>
           <div className="flex items-center justify-between py-1">
             <span className="text-xs font-medium text-slate-400">Aktif</span>
-            <button
-              type="button"
-              onClick={() => setEditForm((f) => ({ ...f, is_active: !f.is_active }))}
-              className={
-                "relative w-11 h-6 rounded-full transition-colors " +
-                (editForm.is_active ? "bg-emerald-500" : "bg-slate-700")
-              }
-            >
-              <span
-                className={
-                  "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform " +
-                  (editForm.is_active ? "translate-x-5" : "translate-x-0")
-                }
-              />
-            </button>
+            <Toggle
+              checked={editForm.is_active}
+              onChange={(next) => setEditForm((f) => ({ ...f, is_active: next }))}
+              label="Status aktif user"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Password Baru (opsional)</label>
@@ -1471,7 +1442,7 @@ function UserPanel() {
               value={editForm.password}
               onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
               placeholder="Minimal 6 karakter"
-              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-all"
+              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 transition-all"
             />
           </div>
           <div className="flex justify-end gap-2 mt-4">
@@ -1484,7 +1455,7 @@ function UserPanel() {
             <button
               onClick={handleEdit}
               disabled={editLoading}
-              className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
+              className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-slate-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
             >
               {editLoading ? "Menyimpan..." : "Simpan"}
             </button>
@@ -1575,18 +1546,18 @@ function GatewayPanel() {
 
   const statusConfig = {
     connected: {
-      color: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/20",
-      dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]",
+      color: "from-amber-500/20 to-amber-500/5 border-amber-500/20",
+      dot: "bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
       label: "Terhubung",
       icon: Wifi,
-      iconColor: "text-emerald-400",
+      iconColor: "text-amber-400",
     },
     disconnected: {
-      color: "from-red-500/10 to-red-500/5 border-red-500/20",
-      dot: "bg-red-400",
+      color: "from-rose-500/10 to-rose-500/5 border-rose-500/20",
+      dot: "bg-rose-400",
       label: "Terputus",
       icon: WifiOff,
-      iconColor: "text-red-400",
+      iconColor: "text-rose-400",
     },
     loading: {
       color: "from-amber-500/10 to-amber-500/5 border-amber-500/20",
@@ -1603,8 +1574,8 @@ function GatewayPanel() {
   return (
     <div className="max-w-lg animate-fadeIn">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-          <Radio size={16} className="text-emerald-400" />
+        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+          <Radio size={16} className="text-amber-400" />
         </div>
         <div>
           <h2 className="text-lg font-semibold text-slate-100">WhatsApp Gateway</h2>
@@ -1659,7 +1630,7 @@ function GatewayPanel() {
           <button
             onClick={handleConnect}
             disabled={connecting || status === "connected"}
-            className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Link2 size={15} />
             {connecting ? "Menghubungkan..." : "Connect"}
@@ -1667,7 +1638,7 @@ function GatewayPanel() {
           <button
             onClick={handleDisconnect}
             disabled={disconnecting || status !== "connected"}
-            className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-4 py-2.5 text-sm font-medium text-rose-400 hover:bg-rose-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Power size={15} />
             {disconnecting ? "Memutuskan..." : "Disconnect"}
@@ -1705,8 +1676,8 @@ function AuditPanel() {
   return (
     <div className="animate-fadeIn">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-          <ClipboardList size={16} className="text-emerald-400" />
+        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+          <ClipboardList size={16} className="text-amber-400" />
         </div>
         <div>
           <h2 className="text-lg font-semibold text-slate-100">Audit Log</h2>
@@ -1717,7 +1688,7 @@ function AuditPanel() {
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="flex items-center gap-3 text-slate-500">
-            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-emerald-500 animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-slate-600 border-t-amber-500 animate-spin" />
             <span className="text-sm">Memuat log...</span>
           </div>
         </div>
@@ -1827,25 +1798,34 @@ function CSConfigPanel() {
     }
   };
 
-  if (loading) return <div className="text-slate-400 p-8 text-center animate-pulse">Memuat...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="flex items-center gap-3 text-slate-500">
+          <Spinner size={16} />
+          <span className="text-sm">Memuat...</span>
+        </div>
+      </div>
+    );
+  }
   if (!config) return null;
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto animate-fadeIn">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
-          <MessageSquare size={20} className="text-purple-400" />
+        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+          <MessageSquare size={16} className="text-amber-400" aria-hidden="true" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-slate-100">Pengaturan Customer Service</h2>
-          <p className="text-sm text-slate-400">Atur penanda (signature) dan template otomatis CS</p>
+          <h2 className="text-lg font-semibold text-slate-100">Pengaturan Customer Service</h2>
+          <p className="text-xs text-slate-500">Atur penanda (signature) dan template otomatis CS</p>
         </div>
       </div>
 
-      <div className="bg-[#0B1221] rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
         <div className="p-6 space-y-6">
           {error && (
-            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm">
               {error}
             </div>
           )}
@@ -1853,18 +1833,11 @@ function CSConfigPanel() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-semibold text-slate-300">Aktifkan Signature Otomatis</label>
-              <button
-                onClick={() => setConfig({ ...config, signatureEnabled: !config.signatureEnabled })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  config.signatureEnabled ? "bg-emerald-500" : "bg-slate-700"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    config.signatureEnabled ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
+              <Toggle
+                checked={config.signatureEnabled}
+                onChange={(next) => setConfig({ ...config, signatureEnabled: next })}
+                label="Aktifkan signature otomatis"
+              />
             </div>
             <p className="text-xs text-slate-500">Jika aktif, sistem akan otomatis menambahkan signature di akhir setiap pesan yang dikirim oleh CS.</p>
           </div>
@@ -1878,11 +1851,11 @@ function CSConfigPanel() {
                 type="text"
                 value={config.signatureTemplate}
                 onChange={(e) => setConfig({ ...config, signatureTemplate: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
                 placeholder="Misal: - {name} (Customer Service)"
               />
               <p className="mt-2 text-xs text-slate-500">
-                Gunakan <code className="text-emerald-400 bg-emerald-400/10 px-1 py-0.5 rounded">{"{name}"}</code> untuk menampilkan nama CS yang sedang mengirim pesan.
+                Gunakan <code className="text-amber-400 bg-amber-400/10 px-1 py-0.5 rounded">{"{name}"}</code> untuk menampilkan nama CS yang sedang mengirim pesan.
               </p>
 
               <div className="mt-4 p-4 rounded-xl bg-slate-800/50 border border-slate-700">
@@ -1904,7 +1877,7 @@ function CSConfigPanel() {
               value={config.quickReplies?.join("\n") || ""}
               onChange={(e) => setConfig({ ...config, quickReplies: e.target.value.split("\n") })}
               rows={4}
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 custom-scrollbar"
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50 custom-scrollbar"
               placeholder="Halo, ada yang bisa kami bantu?&#10;Mohon tunggu sebentar ya..."
             />
           </div>
@@ -1912,18 +1885,11 @@ function CSConfigPanel() {
           <div className="pt-6 border-t border-slate-800">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-semibold text-slate-300">Pesan Otomatis: Saat Chat Diambil (Claim)</label>
-              <button
-                onClick={() => setConfig({ ...config, autoReplyClaimEnabled: !config.autoReplyClaimEnabled })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  config.autoReplyClaimEnabled ? "bg-emerald-500" : "bg-slate-700"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    config.autoReplyClaimEnabled ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
+              <Toggle
+                checked={config.autoReplyClaimEnabled}
+                onChange={(next) => setConfig({ ...config, autoReplyClaimEnabled: next })}
+                label="Aktifkan pesan otomatis saat chat diambil"
+              />
             </div>
             {config.autoReplyClaimEnabled && (
               <div className="mt-3 animate-in fade-in slide-in-from-top-2">
@@ -1931,7 +1897,7 @@ function CSConfigPanel() {
                   value={config.autoReplyClaim}
                   onChange={(e) => setConfig({ ...config, autoReplyClaim: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
                   placeholder="Misal: Halo, dengan CS {name} di sini..."
                 />
                 <p className="mt-1 text-xs text-slate-500">Gunakan {"{name}"} untuk menyisipkan nama CS.</p>
@@ -1942,18 +1908,11 @@ function CSConfigPanel() {
           <div className="pt-6 border-t border-slate-800">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-semibold text-slate-300">Pesan Otomatis: Saat Chat Diselesaikan (Resolve)</label>
-              <button
-                onClick={() => setConfig({ ...config, autoReplyResolveEnabled: !config.autoReplyResolveEnabled })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  config.autoReplyResolveEnabled ? "bg-emerald-500" : "bg-slate-700"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    config.autoReplyResolveEnabled ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
+              <Toggle
+                checked={config.autoReplyResolveEnabled}
+                onChange={(next) => setConfig({ ...config, autoReplyResolveEnabled: next })}
+                label="Aktifkan pesan otomatis saat chat diselesaikan"
+              />
             </div>
             {config.autoReplyResolveEnabled && (
               <div className="mt-3 animate-in fade-in slide-in-from-top-2">
@@ -1961,7 +1920,7 @@ function CSConfigPanel() {
                   value={config.autoReplyResolve}
                   onChange={(e) => setConfig({ ...config, autoReplyResolve: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
                   placeholder="Misal: Terima kasih telah menghubungi kami..."
                 />
                 <p className="mt-1 text-xs text-slate-500">Gunakan {"{name}"} untuk menyisipkan nama CS (opsional).</p>
@@ -1972,18 +1931,11 @@ function CSConfigPanel() {
           <div className="pt-6 border-t border-slate-800">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-semibold text-slate-300">Notifikasi Grup WhatsApp</label>
-              <button
-                onClick={() => setConfig({ ...config, waGroupNotifEnabled: !config.waGroupNotifEnabled })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  config.waGroupNotifEnabled ? "bg-emerald-500" : "bg-slate-700"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    config.waGroupNotifEnabled ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
+              <Toggle
+                checked={config.waGroupNotifEnabled}
+                onChange={(next) => setConfig({ ...config, waGroupNotifEnabled: next })}
+                label="Aktifkan notifikasi grup WhatsApp"
+              />
             </div>
             <p className="text-xs text-slate-500 mb-3">Kirim notifikasi otomatis ke grup WhatsApp setiap ada aktivitas pelanggan (customer baru, request CS, chat diklaim, chat diselesaikan).</p>
             {config.waGroupNotifEnabled && (
@@ -1995,11 +1947,11 @@ function CSConfigPanel() {
                   type="text"
                   value={config.waGroupJid}
                   onChange={(e) => setConfig({ ...config, waGroupJid: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
                   placeholder="Contoh: 123456789-987654321@g.us"
                 />
                 <p className="mt-2 text-xs text-slate-500">
-                  Kirim pesan <code className="text-emerald-400 bg-emerald-400/10 px-1 py-0.5 rounded">!jid</code> di grup WhatsApp untuk mendapatkan ID grup. Format: <code className="text-emerald-400 bg-emerald-400/10 px-1 py-0.5 rounded">xxxxx-xxxxx@g.us</code>
+                  Kirim pesan <code className="text-amber-400 bg-amber-400/10 px-1 py-0.5 rounded">!jid</code> di grup WhatsApp untuk mendapatkan ID grup. Format: <code className="text-amber-400 bg-amber-400/10 px-1 py-0.5 rounded">xxxxx-xxxxx@g.us</code>
                 </p>
               </div>
             )}
@@ -2009,7 +1961,7 @@ function CSConfigPanel() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
             >
               {saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
               Simpan Pengaturan
