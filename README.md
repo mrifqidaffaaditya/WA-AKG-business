@@ -1,6 +1,9 @@
 # WA-AKG Business
+  <img src="https://cdn.keidev.my.id/main-web/portfolio/1781699694661-image.png" />
 
 > **Open-source multi-user WhatsApp Customer Service platform** with AI chatbot, queue system, real-time notifications, and stock integration.
+>
+> 
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
