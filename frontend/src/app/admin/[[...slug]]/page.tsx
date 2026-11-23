@@ -1623,13 +1623,15 @@ function GatewayPanel() {
         .then((data) => {
           const isConn = data.status === "connected";
           setStatus(isConn ? "connected" : "disconnected");
-          if (data.pairingCode) setPairingCode(data.pairingCode);
+          setPairingCode(data.pairingCode || null);
           if (!isConn) {
             apiFetch("/api/gateway/qr")
               .then((res) => res.json())
               .then((qr) => {
                 setQrCode(qr.qr_code || qr.qr || null);
-                if (qr.pairingCode) setPairingCode(qr.pairingCode);
+                if (qr.pairingCode !== undefined) {
+                  setPairingCode(qr.pairingCode || null);
+                }
               })
               .catch(() => {});
           } else {
@@ -1644,23 +1646,24 @@ function GatewayPanel() {
     const interval = setInterval(fetchStatus, 8000);
 
     const socket = getIO();
-    socket?.on("gateway:status", (data: { status: string; pairingCode?: string; qr?: string }) => {
+    socket?.on("gateway:status", (data: { status: string; pairingCode?: string | null; qr?: string | null }) => {
       const isConn = data.status === "connected";
       setStatus(isConn ? "connected" : "disconnected");
       if (isConn) {
         setQrCode(null);
         setPairingCode(null);
+      } else {
+        setPairingCode(data.pairingCode || null);
+        setQrCode(data.qr || null);
       }
-      if (data.pairingCode) setPairingCode(data.pairingCode);
-      if (data.qr) setQrCode(data.qr);
     });
 
-    socket?.on("gateway:pairing_code", (data: { pairingCode: string }) => {
-      if (data.pairingCode) setPairingCode(data.pairingCode);
+    socket?.on("gateway:pairing_code", (data: { pairingCode: string | null }) => {
+      setPairingCode(data.pairingCode || null);
     });
 
-    socket?.on("gateway:qr", (data: { qr: string }) => {
-      if (data.qr) setQrCode(data.qr);
+    socket?.on("gateway:qr", (data: { qr: string | null }) => {
+      setQrCode(data.qr || null);
     });
 
     return () => {
@@ -1742,6 +1745,7 @@ function GatewayPanel() {
       return;
     }
 
+    setPairingCode(null);
     setLoadingPairing(true);
     try {
       const res = await apiFetch("/api/gateway/pairing-code", {

@@ -60,6 +60,7 @@ let sock: ReturnType<typeof makeWASocket> | null = null;
 let currentQR: string | null = null;
 let currentPairingCode: string | null = null;
 let connectionStatus: "disconnected" | "connecting" | "connected" = "disconnected";
+let isExplicitDisconnect = false;
 
 export function getConnectionStatus() {
   return {
@@ -88,6 +89,7 @@ export async function clearSessionFolder(): Promise<void> {
 }
 
 export async function resetWaSession(): Promise<void> {
+  isExplicitDisconnect = true;
   logger.info("[wa] Resetting WhatsApp session (logout & wipe files)...");
   if (sock) {
     try {
@@ -109,11 +111,13 @@ export async function resetWaSession(): Promise<void> {
 
   await clearSessionFolder();
 
+  waEvents.emit("pairing_code", null);
   waEvents.emit("status", "disconnected");
   waEvents.emit("logged_out");
 }
 
 export async function disconnectWa(): Promise<void> {
+  isExplicitDisconnect = true;
   logger.info("[wa] Disconnecting WhatsApp socket...");
   if (sock) {
     try {
@@ -127,10 +131,12 @@ export async function disconnectWa(): Promise<void> {
   connectionStatus = "disconnected";
   currentQR = null;
   currentPairingCode = null;
+  waEvents.emit("pairing_code", null);
   waEvents.emit("status", "disconnected");
 }
 
 export async function connectWa(force = false): Promise<void> {
+  isExplicitDisconnect = false;
   // If already connected and not forced, keep existing connection
   if (sock && connectionStatus === "connected" && !force) return;
 
@@ -232,21 +238,53 @@ export async function connectWa(force = false): Promise<void> {
     if (connection === "close") {
       const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
       const isLoggedOut = reason === DisconnectReason.loggedOut || reason === 401 || reason === 403;
+      const isRestartRequired = reason === DisconnectReason.restartRequired || reason === 515;
 
       connectionStatus = "disconnected";
       currentQR = null;
-      currentPairingCode = null;
 
       if (isLoggedOut) {
         logger.warn("[wa] Logged out or invalid session credentials. Resetting session folder...");
+        currentPairingCode = null;
         sock = null;
         await clearSessionFolder();
+        waEvents.emit("pairing_code", null);
         waEvents.emit("logged_out");
         waEvents.emit("status", "disconnected");
-      } else {
-        logger.warn(`[wa] Disconnected (${reason}), status set to disconnected`);
-        sock = null;
-        waEvents.emit("status", "disconnected");
+        return;
+      }
+
+      if (isRestartRequired) {
+        logger.info("[wa] Restart required (code 515) - finalizing pairing and opening session...");
+        connectionStatus = "connecting";
+        waEvents.emit("status", "connecting");
+        setTimeout(() => {
+          connectWa().catch((err) => logger.error("[wa] Reconnect error on 515:", err));
+        }, 1000);
+        return;
+      }
+
+      logger.warn(`[wa] Disconnected (${reason}), status set to disconnected`);
+      sock = null;
+      waEvents.emit("status", "disconnected");
+
+      // Auto-reconnect if not explicitly disconnected by user and session exists
+      if (!isExplicitDisconnect) {
+        const sessionDir = path.resolve(config.wa.sessionPath);
+        const credsFile = path.join(sessionDir, "creds.json");
+        if (fs.existsSync(credsFile)) {
+          try {
+            const credsData = JSON.parse(fs.readFileSync(credsFile, "utf-8"));
+            if (credsData?.registered) {
+              logger.info(`[wa] Disconnected (${reason}), auto-reconnecting in 3s...`);
+              setTimeout(() => {
+                if (!isExplicitDisconnect && connectionStatus !== "connected") {
+                  connectWa().catch((err) => logger.error("[wa] Auto-reconnect error:", err));
+                }
+              }, 3000);
+            }
+          } catch {}
+        }
       }
     }
   });
@@ -269,33 +307,46 @@ export async function requestWaPairingCode(phoneNumber: string): Promise<string>
     throw new Error("Nomor telepon tidak valid. Masukkan nomor lengkap dengan kode negara, contoh: 628123456789");
   }
 
+  isExplicitDisconnect = false;
+
   // If already connected actively
   if (connectionStatus === "connected") {
-    throw new Error("WhatsApp saat ini sudah terhubung aktif. Silakan putuskan atau hapus sesi terlebih dahulu jika ingin menautkan nomor lain.");
+    throw new Error("WhatsApp saat ini sudah terhubung aktif. Silakan putuskan atau reset sesi terlebih dahulu jika ingin menautkan nomor lain.");
   }
+
+  // Clear previous pairing code immediately so user never sees a stale/old code
+  currentPairingCode = null;
+  waEvents.emit("pairing_code", null);
 
   // If there's an existing registered creds on disk while offline, clear it to start a fresh pairing session
   const sessionDir = path.resolve(config.wa.sessionPath);
   const credsFile = path.join(sessionDir, "creds.json");
+  let needsReset = false;
+
   if (fs.existsSync(credsFile)) {
     try {
       const credsData = JSON.parse(fs.readFileSync(credsFile, "utf-8"));
       if (credsData?.registered) {
-        logger.info("[wa] Stale registered credentials found on disk while disconnected. Clearing session for fresh pairing...");
-        await resetWaSession();
+        logger.info("[wa] Old registered credentials found on disk while disconnected. Clearing session for fresh pairing...");
+        needsReset = true;
       }
     } catch {
-      await clearSessionFolder();
+      needsReset = true;
     }
   }
 
-  // Ensure fresh connection is started
-  await connectWa(true);
+  if (needsReset) {
+    await resetWaSession();
+    isExplicitDisconnect = false;
+    await connectWa(true);
+  } else if (!sock || !(sock.ws as any)?.isOpen) {
+    await connectWa(true);
+  }
 
   // Wait briefly for sock to be initialized and authState ready
   let retries = 0;
   while ((!sock || !sock.authState) && retries < 25) {
-    await delay(250);
+    await delay(150);
     retries++;
   }
 
@@ -307,10 +358,11 @@ export async function requestWaPairingCode(phoneNumber: string): Promise<string>
   if (sock.authState?.creds?.registered) {
     logger.info("[wa] Socket registered flag still true, resetting session for pairing...");
     await resetWaSession();
+    isExplicitDisconnect = false;
     await connectWa(true);
     let r = 0;
     while ((!sock || !sock.authState) && r < 25) {
-      await delay(250);
+      await delay(150);
       r++;
     }
   }
@@ -321,8 +373,8 @@ export async function requestWaPairingCode(phoneNumber: string): Promise<string>
 
   // Wait until websocket is open and handshake completed (avoids 'Connection Closed' error)
   let wsWait = 0;
-  while ((!sock || !sock.ws || !(sock.ws as any).isOpen) && wsWait < 50) {
-    await delay(200);
+  while ((!sock || !sock.ws || !(sock.ws as any).isOpen) && wsWait < 40) {
+    await delay(150);
     wsWait++;
   }
 
@@ -334,7 +386,17 @@ export async function requestWaPairingCode(phoneNumber: string): Promise<string>
     const rawCode = await sock.requestPairingCode(cleanNumber);
     // Format pairing code nicely as ABCD-1234 (standard 8-char Baileys code)
     currentPairingCode = rawCode?.length === 8 ? `${rawCode.slice(0, 4)}-${rawCode.slice(4)}` : rawCode;
+    logger.info(`[wa] Pairing code generated: ${currentPairingCode}`);
     waEvents.emit("pairing_code", currentPairingCode);
+
+    // Auto-clear pairing code after 180 seconds if still not connected
+    setTimeout(() => {
+      if (connectionStatus !== "connected") {
+        currentPairingCode = null;
+        waEvents.emit("pairing_code", null);
+      }
+    }, 180000);
+
     return currentPairingCode;
   } catch (err: any) {
     logger.error("[wa] requestPairingCode error:", err);
