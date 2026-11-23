@@ -7,12 +7,20 @@ import { getStockContext } from "./stock.js";
 import { logger } from "../utils/logger.js";
 
 let client: OpenAI | null = null;
+let lastApiKey = "";
+let lastBaseUrl = "";
 
 function getClient(): OpenAI {
-  if (!client) {
+  const currentKey = config.ai.apiKey || process.env.AI_API_KEY || "";
+  const currentBase = config.ai.baseUrl || process.env.AI_BASE_URL || "https://api.openai.com/v1";
+
+  if (!client || lastApiKey !== currentKey || lastBaseUrl !== currentBase) {
+    lastApiKey = currentKey;
+    lastBaseUrl = currentBase;
     client = new OpenAI({
-      baseURL: config.ai.baseUrl,
-      apiKey: config.ai.apiKey,
+      baseURL: currentBase,
+      apiKey: currentKey || "none",
+      timeout: 25000,
     });
   }
   return client;

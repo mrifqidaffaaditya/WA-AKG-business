@@ -268,15 +268,8 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
       },
       message: savedMsg,
     });
-    emitToUser(activeConv.claimed_by || "none", "conversation:message", {
-      conversationId: activeConv.id,
-      message: savedMsg,
-    });
-    emitToRole("cs", "conversation:message", {
-      conversationId: activeConv.id,
-      message: savedMsg,
-    });
-    emitToRole("admin", "conversation:message", {
+    // Broadcast real-time message to all active staff (CS, admin, super_admin)
+    broadcast("conversation:message", {
       conversationId: activeConv.id,
       message: savedMsg,
     });

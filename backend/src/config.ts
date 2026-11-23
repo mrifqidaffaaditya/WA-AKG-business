@@ -1,4 +1,13 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Load environment variables from cwd, backend directory, and root workspace directory
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+dotenv.config({ path: "/home/aditya/project/WA-AKG-business/.env" });
 
 const appSecret = process.env.APP_SECRET || "";
 const refreshSecret = process.env.REFRESH_SECRET || "";

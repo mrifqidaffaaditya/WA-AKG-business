@@ -2,7 +2,7 @@ import webpush from "web-push";
 import { config } from "../config.js";
 import { db, schema } from "../db/index.js";
 import { generateId } from "../utils/id.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger.js";
 
 if (config.vapid.publicKey && config.vapid.privateKey) {
@@ -151,17 +151,17 @@ export async function sendNotificationToAllCs(payload: {
   url?: string;
   tag?: string;
 }): Promise<void> {
-  const csUsers = await db
+  const staffUsers = await db
     .select({ id: schema.users.id })
     .from(schema.users)
     .where(
       and(
         eq(schema.users.is_active, true),
-        eq(schema.users.role, "cs")
+        inArray(schema.users.role, ["cs", "admin", "super_admin"])
       )
     );
 
-  for (const user of csUsers) {
+  for (const user of staffUsers) {
     await sendNotificationToUser(user.id, payload);
   }
 }

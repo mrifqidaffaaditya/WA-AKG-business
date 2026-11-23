@@ -275,9 +275,8 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
       const msg = data.message || data;
       const currentSelectedId = selectedIdRef.current;
 
-      const playNotify = (c: Conversation) => {
+      const playNotify = (c?: Conversation) => {
         if (msg.sender === "cs") return;
-        if (c.status === "bot" || c.status === "resolved") return;
 
         const soundOn =
           localStorage.getItem("sound_enabled") !== "false";
@@ -287,18 +286,22 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
           } catch {}
         }
 
-        const isHidden = document.visibilityState === "hidden";
+        const isHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
         if (currentSelectedId !== msg.conversation_id || isHidden) {
-          showBrowserNotification("Pesan Baru Masuk", msg.content_type === "text" ? msg.content : "[Media diterima]", {
-            url: "/cs/" + msg.conversation_id + "?tab=all",
-          });
+          const senderName = c?.customer_name || c?.wa_number || "Pelanggan";
+          const preview = msg.content_type === "text" ? (msg.content || "") : `[${msg.content_type || "Media"}]`;
+          showBrowserNotification(
+            `Pesan dari ${senderName}`,
+            preview,
+            { url: "/cs/" + msg.conversation_id + "?tab=all" }
+          );
         }
       };
 
       const existingConv = conversationsRef.current.find(
         (c) => c.id === msg.conversation_id
       );
-      if (existingConv) {
+      if (msg.sender === "customer") {
         playNotify(existingConv);
       }
 
@@ -330,8 +333,11 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
           newArr.splice(idx, 1);
           newArr.unshift(updatedConv);
           return newArr;
+        } else {
+          // New conversation or not in current tab list: refresh list so it appears at top
+          fetchConversations(activeTab);
+          return prev;
         }
-        return prev;
       });
     });
 

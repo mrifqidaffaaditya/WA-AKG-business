@@ -7,6 +7,7 @@ import Modal from "@/components/Modal";
 import { Toggle } from "@/components/ui";
 import { apiFetch, setTokens } from "@/lib/api";
 import { connect } from "@/lib/socket";
+import { setupPushNotifications } from "@/lib/push";
 import {
   MessageCircle,
   Settings,
@@ -88,6 +89,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
 
   // Fetch initial bot status and listen to realtime socket events
   useEffect(() => {
+    setupPushNotifications();
+
     apiFetch("/api/conversations/bot-status")
       .then((res) => res.json())
       .then((data) => {

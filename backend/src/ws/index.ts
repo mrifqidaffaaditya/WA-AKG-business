@@ -57,6 +57,12 @@ export function initWebSocket(httpServer: HttpServer): Server {
       socket.user = userData;
       socket.join(`user:${userData.sub}`);
       socket.join(`role:${userData.role}`);
+      if (userData.role === "super_admin") {
+        socket.join("role:admin");
+        socket.join("role:cs");
+      } else if (userData.role === "admin") {
+        socket.join("role:cs");
+      }
       logger.info(`[ws] Auth: ${userData.sub} (${userData.role})`);
 
       // Trigger dashboard stats for admin/super_admin on connect
