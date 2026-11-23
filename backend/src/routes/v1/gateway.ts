@@ -1,6 +1,11 @@
 import { Router, Response } from "express";
 import { ApiKeyRequest, requireScope } from "../../middleware/apiKeyAuth.js";
-import { getConnectionStatus, requestWaPairingCode } from "../../services/waGateway.js";
+import {
+  getConnectionStatus,
+  requestWaPairingCode,
+  resetWaSession,
+  disconnectWa,
+} from "../../services/waGateway.js";
 import { logger } from "../../utils/logger.js";
 
 const router = Router();
@@ -44,6 +49,36 @@ router.post("/pairing-code", requireScope("admin"), async (req: ApiKeyRequest, r
     const msg = err && typeof err === "object" && "message" in err ? (err as Error).message : String(err);
     logger.error("[v1/gateway/pairing-code] Error:", err);
     res.status(400).json({ error: "Failed to request pairing code", details: msg });
+  }
+});
+
+/**
+ * POST /api/v1/gateway/reset
+ * Force reset and wipe WhatsApp session files
+ */
+router.post("/reset", requireScope("admin"), async (_req: ApiKeyRequest, res: Response) => {
+  try {
+    await resetWaSession();
+    res.json({ message: "WhatsApp session successfully reset and cleared", timestamp: new Date().toISOString() });
+  } catch (err: unknown) {
+    const msg = err && typeof err === "object" && "message" in err ? (err as Error).message : String(err);
+    logger.error("[v1/gateway/reset] Error:", err);
+    res.status(500).json({ error: "Failed to reset WhatsApp session", details: msg });
+  }
+});
+
+/**
+ * POST /api/v1/gateway/disconnect
+ * Disconnect current WhatsApp socket
+ */
+router.post("/disconnect", requireScope("admin"), async (_req: ApiKeyRequest, res: Response) => {
+  try {
+    await disconnectWa();
+    res.json({ message: "WhatsApp gateway disconnected", timestamp: new Date().toISOString() });
+  } catch (err: unknown) {
+    const msg = err && typeof err === "object" && "message" in err ? (err as Error).message : String(err);
+    logger.error("[v1/gateway/disconnect] Error:", err);
+    res.status(500).json({ error: "Failed to disconnect WhatsApp gateway", details: msg });
   }
 });
 

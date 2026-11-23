@@ -45,6 +45,7 @@ import {
   Check,
   KeyRound,
   Phone,
+  LogOut,
 } from "lucide-react";
 import WebhooksPanel from "@/components/admin/WebhooksPanel";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
@@ -1517,6 +1518,8 @@ function GatewayPanel() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [modal, setModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -1587,9 +1590,9 @@ function GatewayPanel() {
       setStatus("disconnected");
       setPairingCode(null);
       setQrCode(null);
-      setModal({ isOpen: true, title: "Berhasil", message: "Gateway WhatsApp telah diputuskan.", type: "success" });
+      setModal({ isOpen: true, title: "Berhasil", message: "Koneksi gateway WhatsApp telah diputuskan.", type: "success" });
     } catch {
-      setModal({ isOpen: true, title: "Error", message: "Gagal memutuskan gateway.", type: "error" });
+      setModal({ isOpen: true, title: "Error", message: "Gagal memutuskan koneksi gateway.", type: "error" });
     } finally {
       setDisconnecting(false);
     }
@@ -1605,6 +1608,35 @@ function GatewayPanel() {
       setModal({ isOpen: true, title: "Error", message: "Gagal menghubungkan gateway.", type: "error" });
     } finally {
       setConnecting(false);
+    }
+  };
+
+  const handleResetSession = async () => {
+    setResetting(true);
+    try {
+      const res = await apiFetch("/api/gateway/reset", { method: "POST" });
+      if (!res.ok) throw new Error("Gagal mereset sesi");
+      setStatus("disconnected");
+      setPairingCode(null);
+      setQrCode(null);
+      setConfirmResetOpen(false);
+      setModal({
+        isOpen: true,
+        title: "Sesi Berhasil Direset",
+        message: "Data sesi lama telah dibersihkan sepenuhnya dari server. Anda sekarang dapat menautkan nomor baru atau scan QR code baru.",
+        type: "success",
+      });
+      // Inisialisasi ulang socket baru secara bersih
+      apiFetch("/api/gateway/connect", { method: "POST" }).catch(() => {});
+    } catch (err: any) {
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: err.message || "Gagal mereset sesi gateway WhatsApp.",
+        type: "error",
+      });
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -1697,25 +1729,48 @@ function GatewayPanel() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {status === "connected" ? (
-            <button
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold transition-all disabled:opacity-50"
-            >
-              <Power size={14} />
-              {disconnecting ? "Memutuskan..." : "Disconnect WhatsApp"}
-            </button>
+            <>
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white text-xs font-semibold transition-all disabled:opacity-50 cursor-pointer"
+                title="Putuskan koneksi socket sementara"
+              >
+                <Power size={14} />
+                <span>{disconnecting ? "Memutuskan..." : "Putuskan Koneksi"}</span>
+              </button>
+              <button
+                onClick={() => setConfirmResetOpen(true)}
+                disabled={resetting}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold transition-all disabled:opacity-50 cursor-pointer"
+                title="Logout dan hapus semua data sesi WhatsApp di server"
+              >
+                <LogOut size={14} />
+                <span>{resetting ? "Mereset..." : "Logout & Hapus Sesi"}</span>
+              </button>
+            </>
           ) : (
-            <button
-              onClick={handleConnect}
-              disabled={connecting}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 text-xs font-semibold transition-all disabled:opacity-50"
-            >
-              <RefreshCw size={14} className={connecting ? "animate-spin" : ""} />
-              {connecting ? "Menghubungkan..." : "Reconnect Gateway"}
-            </button>
+            <>
+              <button
+                onClick={handleConnect}
+                disabled={connecting}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 text-xs font-semibold transition-all disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw size={14} className={connecting ? "animate-spin" : ""} />
+                <span>{connecting ? "Menghubungkan..." : "Reconnect Gateway"}</span>
+              </button>
+              <button
+                onClick={() => setConfirmResetOpen(true)}
+                disabled={resetting}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold transition-all disabled:opacity-50 cursor-pointer"
+                title="Hapus file sesi lama dan mulai dari awal"
+              >
+                <Trash2 size={14} />
+                <span>{resetting ? "Mereset..." : "Hapus / Reset Sesi"}</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1796,9 +1851,18 @@ function GatewayPanel() {
                         className="w-full pl-10 pr-4 py-3 bg-slate-950/90 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 font-mono tracking-wider transition-all"
                       />
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1.5">
-                      Gunakan format internasional tanpa spasi atau tanda plus (contoh: <strong>6281234567890</strong>).
-                    </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mt-1.5">
+                      <p className="text-[11px] text-slate-500">
+                        Gunakan format internasional tanpa spasi atau plus (contoh: <strong>6281234567890</strong>).
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmResetOpen(true)}
+                        className="text-[11px] text-rose-400 hover:text-rose-300 underline underline-offset-2 transition-colors cursor-pointer text-left sm:text-right"
+                      >
+                        Reset Sesi jika ganti nomor
+                      </button>
+                    </div>
                   </div>
 
                   <button
@@ -1880,24 +1944,42 @@ function GatewayPanel() {
                     <p className="text-xs text-slate-400 text-center max-w-xs">
                       Buka WhatsApp di HP ➔ <strong>Perangkat Tertaut</strong> ➔ Arahkan kamera ke QR Code ini.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        apiFetch("/api/gateway/qr")
-                          .then((r) => r.json())
-                          .then((d) => setQrCode(d.qr_code || d.qr || null))
-                          .catch(() => {});
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-xs text-slate-300 hover:bg-slate-800 transition-colors"
-                    >
-                      <RefreshCw size={12} />
-                      <span>Perbarui QR Code</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          apiFetch("/api/gateway/qr")
+                            .then((r) => r.json())
+                            .then((d) => setQrCode(d.qr_code || d.qr || null))
+                            .catch(() => {});
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-xs text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw size={12} />
+                        <span>Perbarui QR</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmResetOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer"
+                      >
+                        <Trash2 size={12} />
+                        <span>Reset Sesi</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 w-full">
+                  <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 w-full space-y-3">
                     <RefreshCw size={24} className="animate-spin text-amber-400 mx-auto mb-2" />
                     <p className="text-xs text-slate-400">Sedang memuat QR Code dari server WhatsApp...</p>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmResetOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={12} />
+                      <span>Reset Sesi jika Macet</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1919,6 +2001,19 @@ function GatewayPanel() {
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal for Reset/Logout */}
+      <Modal
+        isOpen={confirmResetOpen}
+        onClose={() => setConfirmResetOpen(false)}
+        title="Hapus & Reset Sesi WhatsApp"
+        message="Apakah Anda yakin ingin logout dan menghapus sesi WhatsApp? Seluruh data kredensial di server akan dibersihkan, sehingga Anda dapat menghubungkan atau menautkan nomor baru secara bersih."
+        type="warning"
+        isConfirm
+        confirmText={resetting ? "Mereset..." : "Ya, Hapus & Reset"}
+        cancelText="Batal"
+        onConfirm={handleResetSession}
+      />
 
       <Modal
         isOpen={modal.isOpen}

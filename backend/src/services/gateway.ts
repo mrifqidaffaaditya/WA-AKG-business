@@ -29,6 +29,18 @@ export function initGateway(): void {
     } catch {}
   });
 
+  waEvents.on("status", () => {
+    try {
+      getIO().emit("gateway:status", getConnectionStatus());
+    } catch {}
+  });
+
+  waEvents.on("logged_out", () => {
+    try {
+      getIO().emit("gateway:status", getConnectionStatus());
+    } catch {}
+  });
+
   gatewayStatusInterval = setInterval(() => {
     try {
       const io = getIO();

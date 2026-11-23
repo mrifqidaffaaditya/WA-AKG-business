@@ -13,6 +13,8 @@ import {
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
+import fs from "fs";
+import path from "path";
 import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { EventEmitter } from "events";
@@ -68,15 +70,89 @@ export function getConnectionStatus() {
   };
 }
 
-export async function connectWa(): Promise<void> {
-  if (sock) return;
+export async function clearSessionFolder(): Promise<void> {
+  const sessionDir = path.resolve(config.wa.sessionPath);
+  try {
+    if (fs.existsSync(sessionDir)) {
+      await fs.promises.rm(sessionDir, { recursive: true, force: true });
+      logger.info(`[wa] Session folder cleared: ${sessionDir}`);
+    }
+  } catch (err) {
+    logger.error("[wa] Failed to clear session folder:", err);
+  }
+  try {
+    if (!fs.existsSync(sessionDir)) {
+      await fs.promises.mkdir(sessionDir, { recursive: true });
+    }
+  } catch {}
+}
+
+export async function resetWaSession(): Promise<void> {
+  logger.info("[wa] Resetting WhatsApp session (logout & wipe files)...");
+  if (sock) {
+    try {
+      sock.ev.removeAllListeners("connection.update");
+    } catch {}
+    try {
+      await sock.logout();
+    } catch (err) {
+      logger.debug("[wa] Socket logout error during reset (expected if offline):", err);
+    }
+    try {
+      sock.end(undefined);
+    } catch {}
+    sock = null;
+  }
+  connectionStatus = "disconnected";
+  currentQR = null;
+  currentPairingCode = null;
+
+  await clearSessionFolder();
+
+  waEvents.emit("status", "disconnected");
+  waEvents.emit("logged_out");
+}
+
+export async function disconnectWa(): Promise<void> {
+  logger.info("[wa] Disconnecting WhatsApp socket...");
+  if (sock) {
+    try {
+      sock.ev.removeAllListeners("connection.update");
+      sock.end(undefined);
+    } catch (err) {
+      logger.debug("[wa] Disconnect end error:", err);
+    }
+    sock = null;
+  }
+  connectionStatus = "disconnected";
+  currentQR = null;
+  currentPairingCode = null;
+  waEvents.emit("status", "disconnected");
+}
+
+export async function connectWa(force = false): Promise<void> {
+  // If already connected and not forced, keep existing connection
+  if (sock && connectionStatus === "connected" && !force) return;
+
+  // Clean up any stale or lingering socket before connecting
+  if (sock) {
+    try {
+      sock.ev.removeAllListeners("connection.update");
+      sock.end(undefined);
+    } catch {}
+    sock = null;
+  }
 
   connectionStatus = "connecting";
   currentQR = null;
+  waEvents.emit("status", "connecting");
 
-  const { state, saveCreds } = await useMultiFileAuthState(
-    config.wa.sessionPath
-  );
+  const sessionDir = path.resolve(config.wa.sessionPath);
+  if (!fs.existsSync(sessionDir)) {
+    fs.mkdirSync(sessionDir, { recursive: true });
+  }
+
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
   const { version, isLatest } = await fetchLatestBaileysVersion();
   logger.info(`[wa] Using Baileys v${version.join(".")}, latest: ${isLatest}`);
@@ -155,23 +231,22 @@ export async function connectWa(): Promise<void> {
 
     if (connection === "close") {
       const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
-      const isRestart = reason !== DisconnectReason.loggedOut;
+      const isLoggedOut = reason === DisconnectReason.loggedOut || reason === 401 || reason === 403;
 
       connectionStatus = "disconnected";
       currentQR = null;
       currentPairingCode = null;
 
-      if (reason === DisconnectReason.loggedOut) {
-        logger.warn("[wa] Logged out, needs re-auth");
+      if (isLoggedOut) {
+        logger.warn("[wa] Logged out or invalid session credentials. Resetting session folder...");
+        sock = null;
+        await clearSessionFolder();
         waEvents.emit("logged_out");
-      } else {
-        logger.warn(`[wa] Disconnected (${reason}), reconnect in 5s...`);
         waEvents.emit("status", "disconnected");
-        if (isRestart) {
-          sock = null;
-          await delay(5000);
-          await connectWa();
-        }
+      } else {
+        logger.warn(`[wa] Disconnected (${reason}), status set to disconnected`);
+        sock = null;
+        waEvents.emit("status", "disconnected");
       }
     }
   });
@@ -188,35 +263,39 @@ export async function connectWa(): Promise<void> {
   });
 }
 
-export async function disconnectWa(): Promise<void> {
-  if (sock) {
-    try {
-      await sock.logout();
-    } catch (err) {
-      logger.debug("[wa] Logout error (continuing disconnect):", err);
-    }
-    sock = null;
-  }
-  connectionStatus = "disconnected";
-  currentQR = null;
-  currentPairingCode = null;
-}
-
 export async function requestWaPairingCode(phoneNumber: string): Promise<string> {
   const cleanNumber = phoneNumber.replace(/[^0-9]/g, "");
   if (!cleanNumber || cleanNumber.length < 8) {
     throw new Error("Nomor telepon tidak valid. Masukkan nomor lengkap dengan kode negara, contoh: 628123456789");
   }
 
-  // Ensure connection is started
-  if (!sock) {
-    await connectWa();
+  // If already connected actively
+  if (connectionStatus === "connected") {
+    throw new Error("WhatsApp saat ini sudah terhubung aktif. Silakan putuskan atau hapus sesi terlebih dahulu jika ingin menautkan nomor lain.");
   }
 
-  // Wait briefly for sock to be initialized
+  // If there's an existing registered creds on disk while offline, clear it to start a fresh pairing session
+  const sessionDir = path.resolve(config.wa.sessionPath);
+  const credsFile = path.join(sessionDir, "creds.json");
+  if (fs.existsSync(credsFile)) {
+    try {
+      const credsData = JSON.parse(fs.readFileSync(credsFile, "utf-8"));
+      if (credsData?.registered) {
+        logger.info("[wa] Stale registered credentials found on disk while disconnected. Clearing session for fresh pairing...");
+        await resetWaSession();
+      }
+    } catch {
+      await clearSessionFolder();
+    }
+  }
+
+  // Ensure fresh connection is started
+  await connectWa(true);
+
+  // Wait briefly for sock to be initialized and authState ready
   let retries = 0;
-  while (!sock && retries < 15) {
-    await delay(500);
+  while ((!sock || !sock.authState) && retries < 25) {
+    await delay(250);
     retries++;
   }
 
@@ -224,8 +303,31 @@ export async function requestWaPairingCode(phoneNumber: string): Promise<string>
     throw new Error("Gagal menginisialisasi WhatsApp socket");
   }
 
+  // If sock still reports registered, force a clean reset once
   if (sock.authState?.creds?.registered) {
-    throw new Error("WhatsApp sudah terhubung dan terdaftar!");
+    logger.info("[wa] Socket registered flag still true, resetting session for pairing...");
+    await resetWaSession();
+    await connectWa(true);
+    let r = 0;
+    while ((!sock || !sock.authState) && r < 25) {
+      await delay(250);
+      r++;
+    }
+  }
+
+  if (!sock) {
+    throw new Error("Gagal menyiapkan WhatsApp socket untuk pairing");
+  }
+
+  // Wait until websocket is open and handshake completed (avoids 'Connection Closed' error)
+  let wsWait = 0;
+  while ((!sock || !sock.ws || !(sock.ws as any).isOpen) && wsWait < 50) {
+    await delay(200);
+    wsWait++;
+  }
+
+  if (!sock || !(sock.ws as any)?.isOpen) {
+    throw new Error("Koneksi ke server WhatsApp belum siap. Silakan klik Dapatkan Kode Pairing kembali dalam beberapa saat.");
   }
 
   try {
@@ -236,7 +338,7 @@ export async function requestWaPairingCode(phoneNumber: string): Promise<string>
     return currentPairingCode;
   } catch (err: any) {
     logger.error("[wa] requestPairingCode error:", err);
-    throw new Error(err?.message || "Gagal mendapatkan kode pairing dari WhatsApp");
+    throw new Error(err?.message || "Gagal mendapatkan kode pairing dari WhatsApp. Pastikan format nomor benar.");
   }
 }
 

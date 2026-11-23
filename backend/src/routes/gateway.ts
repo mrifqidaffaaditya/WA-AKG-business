@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { authenticate, requireRole } from "../middleware/auth.js";
-import { getConnectionStatus, disconnectWa, connectWa, requestWaPairingCode, waEvents } from "../services/waGateway.js";
+import {
+  getConnectionStatus,
+  disconnectWa,
+  connectWa,
+  resetWaSession,
+  requestWaPairingCode,
+  waEvents,
+} from "../services/waGateway.js";
 
 const router = Router();
 
@@ -13,7 +20,12 @@ router.get("/status", (_req, res) => {
 
 router.get("/qr", (_req, res) => {
   const status = getConnectionStatus();
-  res.json({ qr: status.qr, status: status.status, pairingCode: status.pairingCode });
+  res.json({
+    qr: status.qr,
+    status: status.status,
+    pairingCode: status.pairingCode,
+    registered: status.registered,
+  });
 });
 
 router.post("/pairing-code", async (req, res) => {
@@ -36,8 +48,26 @@ router.post("/disconnect", async (_req, res) => {
 });
 
 router.post("/connect", async (_req, res) => {
-  connectWa().catch(() => {});
+  connectWa(true).catch(() => {});
   res.json({ message: "Reconnecting..." });
+});
+
+router.post("/reset", async (_req, res) => {
+  try {
+    await resetWaSession();
+    res.json({ message: "Sesi WhatsApp berhasil direset dan dihapus" });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Gagal mereset sesi WhatsApp" });
+  }
+});
+
+router.post("/logout", async (_req, res) => {
+  try {
+    await resetWaSession();
+    res.json({ message: "Sesi WhatsApp berhasil di-logout dan dihapus" });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Gagal logout sesi WhatsApp" });
+  }
 });
 
 export default router;
