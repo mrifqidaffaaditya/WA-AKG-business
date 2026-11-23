@@ -157,7 +157,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
 
   // Collapse the auto-grown composer back to one row (used after send/clear).
   const resetTextareaHeight = useCallback(() => {
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    if (textareaRef.current) textareaRef.current.style.height = "44px";
   }, []);
 
   // Max upload size. Base64 inflates payload by ~33%, so a client-side guard
@@ -199,6 +199,29 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
+
+  // Keep viewport aligned on Android when virtual keyboard toggles
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+
+    const handleVisualResize = () => {
+      if (document.activeElement === textareaRef.current) {
+        window.scrollTo(0, 0);
+        document.body.scrollTop = 0;
+        requestAnimationFrame(() => {
+          scrollToBottom("instant");
+        });
+      }
+    };
+
+    const vv = window.visualViewport;
+    vv.addEventListener("resize", handleVisualResize);
+    vv.addEventListener("scroll", handleVisualResize);
+    return () => {
+      vv.removeEventListener("resize", handleVisualResize);
+      vv.removeEventListener("scroll", handleVisualResize);
+    };
+  }, [scrollToBottom]);
 
   useEffect(() => {
     if (!hasMore || loadingMore || !nextCursor || !conversation) return;
@@ -968,6 +991,9 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
             ? ""
             : "border-t border-slate-800/50")
         }
+        style={{
+          paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))",
+        }}
       >
         {replyingTo && (
           <div className="mb-3 p-3 border border-slate-800 rounded-xl bg-slate-800/40 flex items-start justify-between gap-3 animate-slideUp relative overflow-hidden animate-fadeIn">
@@ -1066,12 +1092,22 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
           <textarea
             ref={textareaRef}
             value={input}
+            onFocus={() => {
+              if (typeof window !== "undefined") {
+                window.scrollTo(0, 0);
+                document.body.scrollTop = 0;
+              }
+              setTimeout(() => {
+                scrollToBottom("smooth");
+              }, 150);
+            }}
             onChange={(e) => {
               setInput(e.target.value);
-              // Auto-grow: reset to measure scrollHeight, then clamp to maxHeight.
+              // Auto-grow: reset to 44px minimum to measure scrollHeight, then clamp to maxHeight (120px)
+              // Setting 44px avoids collapsing to 0 and preventing mobile viewport jumps/gaps
               const el = e.target;
-              el.style.height = "auto";
-              el.style.height = Math.min(el.scrollHeight, 120) + "px";
+              el.style.height = "44px";
+              el.style.height = Math.max(44, Math.min(el.scrollHeight, 120)) + "px";
             }}
             onKeyDown={handleKeyDown}
             placeholder="Ketik balasan Anda..."

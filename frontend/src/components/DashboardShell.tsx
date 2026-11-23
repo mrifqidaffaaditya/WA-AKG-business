@@ -302,7 +302,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   const avatarInitial = (userName || "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
-    <div className="flex h-[100dvh] bg-slate-950 overflow-hidden text-slate-300 selection:bg-amber-500/30">
+    <div className="flex h-[100dvh] w-full max-w-full bg-slate-950 overflow-hidden text-slate-300 selection:bg-amber-500/30">
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden transition-opacity"

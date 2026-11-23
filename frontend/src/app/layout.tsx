@@ -27,6 +27,9 @@ export const viewport: Viewport = {
   themeColor: "#1a1612",
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
@@ -35,8 +38,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id" className={`dark ${firaSans.variable} ${firaCode.variable}`}>
-      <body className="bg-slate-950 text-slate-200 min-h-screen font-sans">
+    <html lang="id" className={`dark h-full ${firaSans.variable} ${firaCode.variable}`}>
+      <body className="bg-slate-950 text-slate-200 h-full min-h-full font-sans overflow-hidden overscroll-none">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

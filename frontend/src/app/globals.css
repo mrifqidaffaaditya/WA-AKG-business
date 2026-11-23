@@ -3,6 +3,17 @@
 @tailwind utilities;
 
 @layer base {
+  html,
+  body {
+    height: 100dvh;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+  }
+
   html {
     color-scheme: dark;
     -webkit-tap-highlight-color: transparent;
