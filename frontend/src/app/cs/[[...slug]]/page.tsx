@@ -171,6 +171,20 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
 
     const socket = connect();
 
+    const handleConnect = () => {
+      fetchConversations(activeTabRef.current, false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchConversations(activeTabRef.current, false);
+      }
+    };
+
+    socket.on("connect", handleConnect);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
     socket.on("queue:update", (data: { count: number }) => {
       setQueueCount(data.count);
     });
@@ -342,6 +356,9 @@ function CSContent({ params }: { params: { slug?: string[] } }) {
     });
 
     return () => {
+      socket.off("connect", handleConnect);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
       socket.off("queue:update");
       socket.off("conversation:new");
       socket.off("conversation:claimed");

@@ -50,6 +50,12 @@ app.use((_req, res, next) => {
   next();
 });
 
+// Normalize /socket.io requests without trailing slash to /socket.io/ with query parameters
+app.all("/socket.io", (req, res) => {
+  const query = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
+  res.redirect(307, `/socket.io/${query}`);
+});
+
 app.use("/api", apiRateLimitPassthrough);
 
 app.use("/api/auth", authRoutes);

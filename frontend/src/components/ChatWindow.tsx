@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import Modal from "@/components/Modal";
 import { formatPhone, timeAgo, playBeep } from "@/lib/utils";
-import { getIO } from "@/lib/socket";
+import { connect, getIO } from "@/lib/socket";
 import { apiFetch, getAuthenticatedMediaUrl } from "@/lib/api";
 import {
   Send,
@@ -328,8 +328,8 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   }, []);
 
   useEffect(() => {
-    const socket = getIO();
-    if (!socket || !conversation) return;
+    if (!conversation) return;
+    const socket = connect();
 
     const handleMessage = (data: { conversationId?: string; message?: Message }) => {
       const msg: Message = data.message || (data as unknown as Message);
@@ -355,11 +355,49 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
       }
     };
 
+    const syncMissedMessages = () => {
+      if (!conversation?.id) return;
+      apiFetch("/api/conversations/" + conversation.id + "/messages?limit=30&direction=older")
+        .then((res) => {
+          if (!res.ok) return;
+          return res.json();
+        })
+        .then((data) => {
+          if (data?.messages && Array.isArray(data.messages)) {
+            setMessages((prev) => {
+              const existingIds = new Set(prev.map((m) => m.id));
+              const missing = data.messages.filter((m: Message) => !existingIds.has(m.id));
+              if (missing.length === 0) return prev;
+              const combined = [...prev, ...missing];
+              combined.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+              return combined;
+            });
+            if (isAtBottomRef.current) {
+              requestAnimationFrame(() => scrollToBottom("smooth"));
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
     socket.on("conversation:message", handleMessage);
     socket.on("note:updated", handleNoteUpdated);
+    socket.on("connect", syncMissedMessages);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        syncMissedMessages();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
     return () => {
       socket.off("conversation:message", handleMessage);
       socket.off("note:updated", handleNoteUpdated);
+      socket.off("connect", syncMissedMessages);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
     };
   }, [conversation, scrollToBottom, notesOpen, fetchNotes]);
 

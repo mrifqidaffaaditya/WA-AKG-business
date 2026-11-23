@@ -16,17 +16,32 @@ export function getActiveUserIds(): string[] {
 }
 
 // Pull the access token from the socket handshake: explicit auth payload first
-// (set by socket.io-client), then the httpOnly access_token cookie sent with
-// the upgrade request. Cookie support lets the browser authenticate the socket
-// without the token ever being readable by JS.
+// (set by socket.io-client), with fallback to httpOnly access_token cookie sent with
+// the upgrade request. Validates token so an expired memory token falls back to a valid cookie.
 function getHandshakeToken(socket: Socket): string | null {
   const authToken = socket.handshake.auth?.token as string | undefined;
-  if (authToken) return authToken;
+  if (authToken) {
+    try {
+      verifyAccessToken(authToken);
+      return authToken;
+    } catch {
+      // authToken expired or malformed, continue to test cookie
+    }
+  }
+
   const cookieHeader = socket.handshake.headers.cookie;
   if (cookieHeader) {
     for (const part of cookieHeader.split(";")) {
       const [k, ...v] = part.trim().split("=");
-      if (k === "access_token") return decodeURIComponent(v.join("="));
+      if (k === "access_token") {
+        const cToken = decodeURIComponent(v.join("="));
+        try {
+          verifyAccessToken(cToken);
+          return cToken;
+        } catch {
+          // Cookie token invalid
+        }
+      }
     }
   }
   return null;
@@ -41,45 +56,52 @@ export function initWebSocket(httpServer: HttpServer): Server {
     transports: ["websocket", "polling"],
   });
 
+  // Authenticate socket connection during handshake
+  io.use((rawSocket: Socket, next) => {
+    const socket = rawSocket as AuthenticatedSocket;
+    const token = getHandshakeToken(socket);
+    if (!token) {
+      return next(new Error("Unauthorized: Missing token"));
+    }
+    try {
+      const payload = verifyAccessToken(token);
+      socket.user = { sub: payload.sub, role: payload.role };
+      next();
+    } catch {
+      next(new Error("Unauthorized: Invalid or expired token"));
+    }
+  });
+
   io.on("connection", (rawSocket: Socket) => {
     const socket = rawSocket as AuthenticatedSocket;
-    logger.info(`[ws] Connected: ${socket.id}`);
-
-    try {
-      const token = getHandshakeToken(socket);
-      if (!token) {
-        socket.disconnect(true);
-        return;
-      }
-      const payload = verifyAccessToken(token);
-      const userData = { sub: payload.sub, role: payload.role };
-
-      socket.user = userData;
-      socket.join(`user:${userData.sub}`);
-      socket.join(`role:${userData.role}`);
-      if (userData.role === "super_admin") {
-        socket.join("role:admin");
-        socket.join("role:cs");
-      } else if (userData.role === "admin") {
-        socket.join("role:cs");
-      }
-      logger.info(`[ws] Auth: ${userData.sub} (${userData.role})`);
-
-      // Trigger dashboard stats for admin/super_admin on connect
-      if (userData.role === "admin" || userData.role === "super_admin") {
-        import("../services/dashboard.js").then((m) => m.broadcastDashboardStats()).catch(() => {});
-      }
-
-      // Track online status
-      if (!activeUsers.has(userData.sub)) {
-        activeUsers.set(userData.sub, new Set());
-      }
-      activeUsers.get(userData.sub)!.add(socket.id);
-      broadcast("user:status", { userId: userData.sub, status: "online" });
-    } catch {
+    const userData = socket.user;
+    if (!userData) {
       socket.disconnect(true);
       return;
     }
+
+    logger.info(`[ws] Connected & Auth: ${socket.id} (${userData.sub}, ${userData.role})`);
+
+    socket.join(`user:${userData.sub}`);
+    socket.join(`role:${userData.role}`);
+    if (userData.role === "super_admin") {
+      socket.join("role:admin");
+      socket.join("role:cs");
+    } else if (userData.role === "admin") {
+      socket.join("role:cs");
+    }
+
+    // Trigger dashboard stats for admin/super_admin on connect
+    if (userData.role === "admin" || userData.role === "super_admin") {
+      import("../services/dashboard.js").then((m) => m.broadcastDashboardStats()).catch(() => {});
+    }
+
+    // Track online status
+    if (!activeUsers.has(userData.sub)) {
+      activeUsers.set(userData.sub, new Set());
+    }
+    activeUsers.get(userData.sub)!.add(socket.id);
+    broadcast("user:status", { userId: userData.sub, status: "online" });
 
     socket.on("disconnect", () => {
       logger.info(`[ws] Disconnected: ${socket.id}`);

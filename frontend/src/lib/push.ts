@@ -56,29 +56,47 @@ export async function setupPushNotifications(): Promise<void> {
   }
 }
 
-export function showBrowserNotification(title: string, body: string, data?: Record<string, unknown>) {
+export async function showBrowserNotification(
+  title: string,
+  body: string,
+  data?: Record<string, unknown>
+): Promise<void> {
   if (typeof window === "undefined" || !("Notification" in window)) return;
 
   if (Notification.permission === "default") {
-    Notification.requestPermission().then((perm) => {
-      if (perm === "granted") {
-        try {
-          const n = new Notification(title, { body, data, icon: "/icon-192.png" });
-          n.onclick = () => {
-            window.focus();
-            n.close();
-            if (data?.url) window.location.href = data.url as string;
-          };
-        } catch {}
-      }
-    });
-    return;
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") return;
+    } catch {
+      return;
+    }
   }
 
   if (Notification.permission !== "granted") return;
 
+  const options = {
+    body,
+    data,
+    tag: (data?.url as string) || "wa-akg-notification",
+    vibrate: [200, 100, 200],
+  } as NotificationOptions & { vibrate?: number[] };
+
+  // 1. Android Chrome and Service Worker supported browsers (required on Android)
+  if ("serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && "showNotification" in reg) {
+        await reg.showNotification(title, options);
+        return;
+      }
+    } catch {
+      // Fallback to desktop Notification if SW fails
+    }
+  }
+
+  // 2. Desktop Notification fallback
   try {
-    const notification = new Notification(title, { body, data, icon: "/icon-192.png" });
+    const notification = new Notification(title, options);
     notification.onclick = () => {
       window.focus();
       notification.close();
