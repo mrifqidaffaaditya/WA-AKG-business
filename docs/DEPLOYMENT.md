@@ -19,22 +19,25 @@ WA-AKG Business supports two flexible production setups:
 
 ## 2. aaPanel Nginx Reverse Proxy Setup
 
-If you manage your VPS with **aaPanel** and want to proxy your domain (`wa-akg-business.aikeigroup.net`):
+In aaPanel, when you create a Reverse Proxy for `/` pointing to `http://127.0.0.1:4041`, aaPanel automatically generates `location ^~ / { ... }`. 
 
-1. In aaPanel, create a new Website for your domain (`wa-akg-business.aikeigroup.net`).
-2. Go to **Website Settings** ➔ **Config** (or **Reverse Proxy**).
-3. Paste the following configuration inside the `server { ... }` block (available at `nginx/aapanel.conf`):
+To route WebSockets (`/socket.io/`), REST API (`/api/`), and media (`/uploads/`) directly to the backend without causing a `duplicate location "/"` error:
+
+1. In aaPanel, create a standard **Reverse Proxy**:
+   - Proxy Name: `wa-akg-frontend`
+   - Target URL: `http://127.0.0.1:4041`
+   - Sent Domain: `$host`
+2. Next, go to **Website Settings** ➔ **Customized Configuration Files** (or File Extension):
+3. Add the following rules (available at `nginx/aapanel.conf`):
 
 ```nginx
-client_max_body_size 100M;
-
 # 1. Realtime WebSockets (Socket.io)
-location /socket.io/ {
+location ^~ /socket.io/ {
     proxy_pass http://127.0.0.1:4005/socket.io/;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -44,10 +47,10 @@ location /socket.io/ {
 }
 
 # 2. Backend REST API v1, Auth & Docs
-location /api/ {
+location ^~ /api/ {
     proxy_pass http://127.0.0.1:4005/api/;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -55,39 +58,15 @@ location /api/ {
     proxy_read_timeout 300s;
 }
 
-# 3. Media Uploads
-location /uploads/ {
+# 3. WhatsApp Media & Attachments
+location ^~ /uploads/ {
     proxy_pass http://127.0.0.1:4005/uploads/;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     expires 30d;
-}
-
-# 4. Next.js Static Chunks (_next)
-location /_next/ {
-    proxy_pass http://127.0.0.1:4041/_next/;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    expires 365d;
-}
-
-# 5. Frontend Next.js UI (Root)
-location / {
-    proxy_pass http://127.0.0.1:4041/;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_read_timeout 300s;
 }
 ```
 
