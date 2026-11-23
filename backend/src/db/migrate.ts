@@ -137,6 +137,52 @@ const MIGRATIONS = [
     updated_at TEXT NOT NULL
   )
   `,
+  `
+  CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    key_prefix TEXT NOT NULL,
+    permissions TEXT NOT NULL DEFAULT '["*"]',
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    last_used_at TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+  `,
+  `
+  CREATE TABLE IF NOT EXISTS webhooks (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    secret TEXT NOT NULL,
+    events TEXT NOT NULL DEFAULT '["*"]',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+  `,
+  `
+  CREATE TABLE IF NOT EXISTS webhook_deliveries (
+    id TEXT PRIMARY KEY,
+    webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+    event TEXT NOT NULL,
+    url TEXT NOT NULL,
+    request_payload TEXT NOT NULL,
+    response_status INTEGER,
+    response_body TEXT,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    success INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    attempt INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  )
+  `,
+  `CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)`,
+  `CREATE INDEX IF NOT EXISTS idx_webhooks_active ON webhooks(is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_created ON webhook_deliveries(webhook_id, created_at DESC)`,
 ];
 
 async function addColumnIfNotExists(

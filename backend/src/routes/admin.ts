@@ -12,6 +12,9 @@ import { logger } from "../utils/logger.js";
 import { getDashboardStats } from "../services/dashboard.js";
 import { getCsConfig, updateCsConfig, validateCsConfigFields } from "../services/csConfig.js";
 import { getActiveUserIds } from "../ws/index.js";
+import { createApiKey, listApiKeys, toggleApiKey, deleteApiKey } from "../services/apiKey.js";
+import { isSafeWebhookUrl, invalidateWebhookCache, testWebhook } from "../services/webhook.js";
+import crypto from "crypto";
 
 const ALLOWED_BOT_CONFIG_FIELDS = [
   "persona_name",
@@ -576,6 +579,302 @@ router.get("/cs-stats", async (_req, res) => {
     res.json(result);
   } catch (err) {
     logger.error("[admin] CS stats error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── API Keys Management ──────────────────────────────────────
+router.get("/api-keys", async (_req: AuthRequest, res) => {
+  try {
+    const keys = await listApiKeys();
+    res.json(keys);
+  } catch (err) {
+    logger.error("[admin] List api keys error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/api-keys", async (req: AuthRequest, res) => {
+  try {
+    const { name, permissions } = req.body;
+    if (!name || typeof name !== "string") {
+      res.status(400).json({ error: "Name is required" });
+      return;
+    }
+    const result = await createApiKey({
+      name,
+      permissions: Array.isArray(permissions) ? permissions : ["*"],
+      userId: req.user!.sub,
+    });
+
+    createAuditLog({
+      userId: req.user!.sub,
+      action: "create_api_key",
+      entityType: "api_key",
+      entityId: result.id,
+      details: JSON.stringify({ name: result.name, permissions: result.permissions }),
+    });
+
+    res.status(201).json(result);
+  } catch (err) {
+    logger.error("[admin] Create api key error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/api-keys/:id/toggle", async (req: AuthRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const { isActive } = req.body;
+    await toggleApiKey(id, Boolean(isActive));
+
+    createAuditLog({
+      userId: req.user!.sub,
+      action: "toggle_api_key",
+      entityType: "api_key",
+      entityId: id,
+      details: JSON.stringify({ isActive: Boolean(isActive) }),
+    });
+
+    res.json({ success: true, id, isActive: Boolean(isActive) });
+  } catch (err) {
+    logger.error("[admin] Toggle api key error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/api-keys/:id", async (req: AuthRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    await deleteApiKey(id);
+
+    createAuditLog({
+      userId: req.user!.sub,
+      action: "delete_api_key",
+      entityType: "api_key",
+      entityId: id,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    logger.error("[admin] Delete api key error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Webhooks Management ──────────────────────────────────────
+router.get("/webhooks", async (_req: AuthRequest, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(schema.webhooks)
+      .orderBy(desc(schema.webhooks.created_at));
+
+    const formatted = rows.map((h) => {
+      let events: string[] = ["*"];
+      try {
+        events = JSON.parse(h.events);
+      } catch {
+        events = ["*"];
+      }
+      return {
+        id: h.id,
+        name: h.name,
+        url: h.url,
+        secret: h.secret,
+        events,
+        isActive: Boolean(h.is_active),
+        createdAt: h.created_at,
+        updatedAt: h.updated_at,
+      };
+    });
+
+    res.json(formatted);
+  } catch (err) {
+    logger.error("[admin] List webhooks error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/webhooks", async (req: AuthRequest, res) => {
+  try {
+    const { name, url, secret, events, isActive = true } = req.body;
+
+    if (!name || typeof name !== "string") {
+      res.status(400).json({ error: "Name is required" });
+      return;
+    }
+    if (!url || typeof url !== "string") {
+      res.status(400).json({ error: "URL is required" });
+      return;
+    }
+
+    const check = isSafeWebhookUrl(url);
+    if (!check.valid) {
+      res.status(400).json({ error: check.error || "Invalid URL" });
+      return;
+    }
+
+    const finalSecret = secret && typeof secret === "string" && secret.length >= 16
+      ? secret
+      : crypto.randomBytes(32).toString("hex");
+
+    const eventsArray = Array.isArray(events) && events.length > 0 ? events : ["*"];
+    const id = generateId();
+    const now = new Date().toISOString();
+
+    await db.insert(schema.webhooks).values({
+      id,
+      name,
+      url,
+      secret: finalSecret,
+      events: JSON.stringify(eventsArray),
+      is_active: Boolean(isActive),
+      created_by: req.user!.sub,
+      created_at: now,
+      updated_at: now,
+    });
+
+    invalidateWebhookCache();
+
+    createAuditLog({
+      userId: req.user!.sub,
+      action: "create_webhook",
+      entityType: "webhook",
+      entityId: id,
+      details: JSON.stringify({ name, url, events: eventsArray }),
+    });
+
+    res.status(201).json({
+      id,
+      name,
+      url,
+      secret: finalSecret,
+      events: eventsArray,
+      isActive: Boolean(isActive),
+      createdAt: now,
+    });
+  } catch (err) {
+    logger.error("[admin] Create webhook error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/webhooks/:id", async (req: AuthRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const { name, url, secret, events, isActive } = req.body;
+
+    const existing = await db.select().from(schema.webhooks).where(eq(schema.webhooks.id, id)).limit(1);
+    if (existing.length === 0) {
+      res.status(404).json({ error: "Webhook not found" });
+      return;
+    }
+
+    if (url) {
+      const check = isSafeWebhookUrl(url);
+      if (!check.valid) {
+        res.status(400).json({ error: check.error || "Invalid URL" });
+        return;
+      }
+    }
+
+    const updateData: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (name !== undefined) updateData.name = name;
+    if (url !== undefined) updateData.url = url;
+    if (secret !== undefined) updateData.secret = secret;
+    if (events !== undefined && Array.isArray(events)) updateData.events = JSON.stringify(events);
+    if (isActive !== undefined) updateData.is_active = Boolean(isActive);
+
+    await db.update(schema.webhooks).set(updateData).where(eq(schema.webhooks.id, id));
+    invalidateWebhookCache();
+
+    createAuditLog({
+      userId: req.user!.sub,
+      action: "update_webhook",
+      entityType: "webhook",
+      entityId: id,
+      details: JSON.stringify(updateData),
+    });
+
+    res.json({ success: true, message: "Webhook updated" });
+  } catch (err) {
+    logger.error("[admin] Update webhook error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/webhooks/:id", async (req: AuthRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    await db.delete(schema.webhooks).where(eq(schema.webhooks.id, id));
+    invalidateWebhookCache();
+
+    createAuditLog({
+      userId: req.user!.sub,
+      action: "delete_webhook",
+      entityType: "webhook",
+      entityId: id,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    logger.error("[admin] Delete webhook error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/webhooks/:id/test", async (req: AuthRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const result = await testWebhook(id);
+    res.json(result);
+  } catch (err: unknown) {
+    const msg = err && typeof err === "object" && "message" in err ? (err as Error).message : String(err);
+    res.status(500).json({ error: "Webhook test failed", details: msg });
+  }
+});
+
+router.get("/webhooks/deliveries", async (req: AuthRequest, res) => {
+  try {
+    const { webhookId, limit = "50" } = req.query;
+    const numLimit = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+
+    let query = db
+      .select({
+        id: schema.webhookDeliveries.id,
+        webhookId: schema.webhookDeliveries.webhook_id,
+        event: schema.webhookDeliveries.event,
+        url: schema.webhookDeliveries.url,
+        responseStatus: schema.webhookDeliveries.response_status,
+        durationMs: schema.webhookDeliveries.duration_ms,
+        success: schema.webhookDeliveries.success,
+        errorMessage: schema.webhookDeliveries.error_message,
+        attempt: schema.webhookDeliveries.attempt,
+        createdAt: schema.webhookDeliveries.created_at,
+        requestPayload: schema.webhookDeliveries.request_payload,
+        responseBody: schema.webhookDeliveries.response_body,
+      })
+      .from(schema.webhookDeliveries);
+
+    if (webhookId && typeof webhookId === "string") {
+      const rows = await query
+        .where(eq(schema.webhookDeliveries.webhook_id, webhookId))
+        .orderBy(desc(schema.webhookDeliveries.created_at))
+        .limit(numLimit);
+      res.json(rows);
+      return;
+    }
+
+    const rows = await query
+      .orderBy(desc(schema.webhookDeliveries.created_at))
+      .limit(numLimit);
+
+    res.json(rows);
+  } catch (err) {
+    logger.error("[admin] List webhook deliveries error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -162,3 +162,45 @@ export const csConfig = sqliteTable("cs_config", {
   wa_group_jid: text("wa_group_jid").notNull().default(""),
   updated_at: text("updated_at").notNull(),
 });
+
+export const apiKeys = sqliteTable("api_keys", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  key_hash: text("key_hash").notNull().unique(),
+  key_prefix: text("key_prefix").notNull(),
+  permissions: text("permissions").notNull().default("[\"*\"]"),
+  created_by: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  last_used_at: text("last_used_at"),
+  is_active: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at").notNull(),
+});
+
+export const webhooks = sqliteTable("webhooks", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  secret: text("secret").notNull(),
+  events: text("events").notNull().default("[\"*\"]"),
+  is_active: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  created_by: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at").notNull(),
+});
+
+export const webhookDeliveries = sqliteTable("webhook_deliveries", {
+  id: text("id").primaryKey(),
+  webhook_id: text("webhook_id")
+    .notNull()
+    .references(() => webhooks.id, { onDelete: "cascade" }),
+  event: text("event").notNull(),
+  url: text("url").notNull(),
+  request_payload: text("request_payload").notNull(),
+  response_status: integer("response_status"),
+  response_body: text("response_body"),
+  duration_ms: integer("duration_ms").notNull().default(0),
+  success: integer("success", { mode: "boolean" }).notNull().default(false),
+  error_message: text("error_message"),
+  attempt: integer("attempt").notNull().default(1),
+  created_at: text("created_at").notNull(),
+});

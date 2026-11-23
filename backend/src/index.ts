@@ -23,6 +23,8 @@ import customerRoutes from "./routes/customers.js";
 import adminRoutes from "./routes/admin.js";
 import notificationRoutes from "./routes/notifications.js";
 import gatewayRoutes from "./routes/gateway.js";
+import v1Routes from "./routes/v1/index.js";
+import { docsRouter } from "./docs/openapi.js";
 
 const app = express();
 
@@ -41,7 +43,7 @@ app.use(cookieParser());
 // Security headers (defense-in-depth alongside nginx)
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=(), usb=()");
@@ -56,6 +58,8 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/gateway", gatewayRoutes);
+app.use("/api/v1", v1Routes);
+app.use("/api/docs", docsRouter);
 
 // Authenticated media file serving. Token resolution order: httpOnly cookie
 // (preferred — never exposed to JS or logged in URLs), then Authorization

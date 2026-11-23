@@ -2,9 +2,119 @@
 
 Complete REST API documentation for WA-AKG Business.
 
-Base URL: `http://localhost:4040/api`
+- Base URL Internal / Gateway: `http://localhost:4040/api`
+- Developer REST API v1 Base: `http://localhost:4040/api/v1`
+- Interactive OpenAPI Docs: `http://localhost:4040/api/docs`
+- OpenAPI 3.0 Specification: `http://localhost:4040/api/docs/openapi.json`
+- Webhooks Specification & Guide: [WEBHOOKS.md](./WEBHOOKS.md)
 
-## Authentication
+---
+
+## Developer REST API (v1)
+
+Developer API memungkinkan integrasi eksternal (CRM, ERP, Zapier, skrip backend) menggunakan autentikasi API Key (`X-API-Key: akg_live_...` atau `Authorization: Bearer akg_live_...`).
+
+### POST /api/v1/messages/send
+
+Mengirimkan pesan WhatsApp tunggal (teks atau media).
+
+**Headers:**
+- `X-API-Key`: `akg_live_...`
+- `Content-Type`: `application/json`
+
+**Request Body:**
+```json
+{
+  "to": "6281234567890",
+  "content": "Halo, pesanan Anda #12345 sudah dikirim!",
+  "contentType": "text",
+  "mediaUrl": "https://example.com/receipt.pdf",
+  "fileName": "receipt.pdf"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "messageId": "msg_01HXYZ...",
+  "conversationId": "conv_01HABC...",
+  "waMessageId": "3EB0B0F39D5...",
+  "to": "6281234567890",
+  "sentAt": "2026-11-23T12:00:00.000Z"
+}
+```
+
+---
+
+### POST /api/v1/messages/broadcast
+
+Mengirim pesan massal ke banyak nomor dengan proteksi delay bertahap (*staggered delivery*).
+
+**Request Body:**
+```json
+{
+  "recipients": ["6281234567890", "6289876543210"],
+  "content": "Pengumuman promo spesial hari ini!",
+  "delayMs": 800
+}
+```
+
+**Response (202 Accepted):**
+```json
+{
+  "success": true,
+  "queued": 2,
+  "staggerDelayMs": 800,
+  "estimatedDurationSeconds": 2,
+  "message": "Broadcast queued and delivering in background"
+}
+```
+
+---
+
+### GET /api/v1/conversations
+
+Daftar percakapan dengan filter status dan pagination cursor.
+
+**Query Parameters:**
+- `status`: `bot` | `waiting` | `active` | `resolved` | `hold`
+- `limit`: default `20` (maksimum `100`)
+- `cursor`: cursor pagination
+
+---
+
+### GET /api/v1/conversations/:id/messages
+
+Mengambil riwayat percakapan.
+
+---
+
+### PATCH /api/v1/conversations/:id/status
+
+Mengubah status percakapan (`waiting`, `active`, `resolved`, `hold`).
+
+---
+
+### POST /api/v1/conversations/:id/resolve
+
+Menyelesaikan sesi percakapan.
+
+---
+
+### GET /api/v1/stock & POST /api/v1/stock/sync
+
+Membaca inventaris stok produk dan memicu sinkronisasi on-demand dari datasource.
+
+---
+
+### GET /api/v1/gateway/status
+
+Mengecek status koneksi WhatsApp Gateway (connected, connecting, disconnected, dan QR code).
+
+---
+
+## Authentication (CS & Admin Portal)
 
 ### POST /api/auth/login
 

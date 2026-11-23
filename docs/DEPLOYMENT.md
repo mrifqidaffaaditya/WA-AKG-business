@@ -1,108 +1,160 @@
-# Deployment Guide
+# Deployment & Reverse Proxy Guide
 
-Production deployment for WA-AKG Business.
-
-## Docker Compose (Recommended)
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/mrifqidaffaaditya/WA-AKG-business.git
-cd WA-AKG-business
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with production values:
-#   APP_SECRET — strong random string (openssl rand -hex 32)
-#   AI_API_KEY — your OpenAI or compatible API key
-#   VAPID_PUBLIC_KEY — generate with npx web-push generate-vapid-keys
-#   VAPID_PRIVATE_KEY
-#   CORS_ORIGIN — your production frontend URL
-#   NODE_ENV=production
-
-# 3. Start services (auto-install, auto-migrate, auto-seed)
-docker compose up -d
-```
-
-### Services
-
-| Service | Port | Description |
-|---|---|---|
-| `frontend` | 4041 | Next.js production server |
-| `backend` | 4040 | Express API + WebSocket |
-| `redis` | 6380 | Cache & job queue |
+WA-AKG Business supports two flexible production setups:
+1. **PM2 Native Deployment (Recommended)** — Ultra-lightweight (~150MB total RAM, instant startup, no Docker build overhead).
+2. **Docker Compose** — Containerized frontend & backend using host Redis (or optional containerized Redis/Nginx).
 
 ---
 
-## Reverse Proxy (Nginx)
+## 1. Port Allocation Overview
+
+| Service | Internal Port | Exposed Via | Description |
+| :--- | :---: | :---: | :--- |
+| **Backend** | `4005` | `127.0.0.1:4005` | Express.js, Baileys WhatsApp, REST API v1, WebSockets (`/socket.io`), Webhooks |
+| **Frontend** | `4041` | `127.0.0.1:4041` | Next.js 15 Standalone UI (App Router, OLED dark theme) |
+| **Redis** | `6379` | `127.0.0.1:6379` | aaPanel native Redis service (job queues & cache) |
+| **Public Gateway** | `80` / `443` | aaPanel / Nginx / Cloudflare | Reverse proxy handling HTTPS, domain routing & WebSocket upgrades |
+
+---
+
+## 2. aaPanel Nginx Reverse Proxy Setup
+
+If you manage your VPS with **aaPanel** and want to proxy your domain (`wa-akg-business.aikeigroup.net`):
+
+1. In aaPanel, create a new Website for your domain (`wa-akg-business.aikeigroup.net`).
+2. Go to **Website Settings** ➔ **Config** (or **Reverse Proxy**).
+3. Paste the following configuration inside the `server { ... }` block (available at `nginx/aapanel.conf`):
 
 ```nginx
-server {
-    listen 443 ssl http2;
-    server_name wa-akg.yourdomain.com;
+client_max_body_size 100M;
 
-    # Frontend
-    location / {
-        proxy_pass http://localhost:4041;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
+# 1. Realtime WebSockets (Socket.io)
+location /socket.io/ {
+    proxy_pass http://127.0.0.1:4005/socket.io/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+    proxy_buffering off;
+}
 
-    # Backend API
-    location /api/ {
-        proxy_pass http://localhost:4040;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+# 2. Backend REST API v1, Auth & Docs
+location /api/ {
+    proxy_pass http://127.0.0.1:4005/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 60s;
+    proxy_read_timeout 300s;
+}
 
-    # WebSocket
-    location /socket.io/ {
-        proxy_pass http://localhost:4040;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }
+# 3. Media Uploads
+location /uploads/ {
+    proxy_pass http://127.0.0.1:4005/uploads/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    expires 30d;
+}
+
+# 4. Next.js Static Chunks (_next)
+location /_next/ {
+    proxy_pass http://127.0.0.1:4041/_next/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    expires 365d;
+}
+
+# 5. Frontend Next.js UI (Root)
+location / {
+    proxy_pass http://127.0.0.1:4041/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;
 }
 ```
 
 ---
 
-## Environment Validation Checklist
+## 3. Cloudflare Tunnel Setup
 
-Before going to production:
-
-- [ ] `APP_SECRET` set to a strong random value (not default)
-- [ ] `NODE_ENV=production`
-- [ ] `AI_API_KEY` set
-- [ ] `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` set
-- [ ] `CORS_ORIGIN` set to production frontend URL
-- [ ] HTTPS enabled on reverse proxy
-- [ ] Firewall blocks direct access to ports 4040/4041
-- [ ] Database backed up regularly
+When using Cloudflare Tunnel (via Zero Trust / `cloudflared`):
+- **Ingress Rule Target**: Point the public hostname `wa-akg-business.aikeigroup.net` to:
+  - **Option A (Via aaPanel Nginx)**: `http://localhost:80` (or `http://127.0.0.1:80`) — aaPanel automatically handles the paths and WebSockets.
+  - **Option B (Direct to Next.js)**: `http://127.0.0.1:4041` — Ensure WebSockets are enabled in the Cloudflare dashboard.
 
 ---
 
-## Backup
+## 4. PM2 Native Operation
+
+### Start Services
+```bash
+# Start backend and frontend via PM2
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
+### Commands
+```bash
+# Check running status
+pm2 status
+
+# View backend logs
+pm2 logs wa-akg-business-backend
+
+# View frontend logs
+pm2 logs wa-akg-business-frontend
+
+# Restart after code changes
+pm2 restart ecosystem.config.cjs --update-env
+```
+
+---
+
+## 5. Docker Compose (Alternative)
+
+If you prefer containerized deployment:
+
+```bash
+# Start backend and frontend containers
+docker compose up -d
+
+# Check container status
+docker compose ps
+docker compose logs -f
+```
+
+*Note: In `docker-compose.yml`, `redis` and `nginx` are provided as commented-out services for environments without native aaPanel or host reverse proxies.*
+
+---
+
+## 6. Backups
 
 ### SQLite Database
-
 ```bash
-# Simple file backup
-cp data/wa_akg.db "backups/wa-akg-$(date +%Y%m%d-%H%M%S).db"
-
-# Cron job (daily at 2am)
-0 2 * * * cp /path/to/WA-AKG-business/data/wa_akg.db /path/to/backups/wa-akg-$(date +\%Y\%m\%d).db
+# Daily backup
+cp backend/data/wa_akg.db backups/wa-akg-$(date +%Y%m%d).db
 ```
 
-### WA Sessions
-
+### WhatsApp Sessions
 ```bash
-# Backup session files
-tar -czf "backups/sessions-$(date +%Y%m%d).tar.gz" sessions/
+# Backup credentials
+tar -czf backups/sessions-$(date +%Y%m%d).tar.gz backend/sessions/
 ```
-
-**Never commit session files to git.** They contain authentication credentials.

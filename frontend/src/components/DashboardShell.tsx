@@ -23,6 +23,9 @@ import {
   Headset,
   Menu,
   X as XIcon,
+  Webhook,
+  Key,
+  FileCode2,
 } from "lucide-react";
 
 interface DashboardShellProps {
@@ -82,6 +85,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         { label: "Stok", icon: Package, tab: "stock" },
         { label: "Users", icon: Users, tab: "users" },
         { label: "Gateway", icon: Radio, tab: "gateway" },
+        { label: "Webhooks", icon: Webhook, tab: "webhooks" },
+        { label: "API Keys", icon: Key, tab: "api_keys" },
+        { label: "API Docs", icon: FileCode2, tab: "docs" },
         { label: "Audit Log", icon: ClipboardList, tab: "audit" },
         { label: "Pengaturan CS", icon: Headset, tab: "cs_config" },
       ]

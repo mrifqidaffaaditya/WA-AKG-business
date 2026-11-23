@@ -40,8 +40,21 @@ import {
   MessageCircle,
   ArrowUpRight,
 } from "lucide-react";
+import WebhooksPanel from "@/components/admin/WebhooksPanel";
+import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
+import DocsPanel from "@/components/admin/DocsPanel";
 
-type TabType = "dashboard" | "bot" | "stock" | "users" | "gateway" | "audit" | "cs_config";
+type TabType =
+  | "dashboard"
+  | "bot"
+  | "stock"
+  | "users"
+  | "gateway"
+  | "audit"
+  | "cs_config"
+  | "webhooks"
+  | "api_keys"
+  | "docs";
 
 export default function AdminPage() {
   return (
@@ -68,7 +81,18 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
   // console.log("[ADMIN-PAGE-v3]", { userIsNull: user === null, authLoading, slug: params.slug });
 
   const slug = params.slug?.[0] || "dashboard";
-  const VALID_TABS: TabType[] = ["dashboard", "bot", "stock", "users", "gateway", "audit", "cs_config"];
+  const VALID_TABS: TabType[] = [
+    "dashboard",
+    "bot",
+    "stock",
+    "users",
+    "gateway",
+    "audit",
+    "cs_config",
+    "webhooks",
+    "api_keys",
+    "docs",
+  ];
   const activeTab: TabType = VALID_TABS.includes(slug as TabType) ? (slug as TabType) : "dashboard";
 
   useEffect(() => {
@@ -118,6 +142,9 @@ function AdminContent({ params }: { params: { slug?: string[] } }) {
           {activeTab === "gateway" && <GatewayPanel />}
           {activeTab === "audit" && <AuditPanel />}
           {activeTab === "cs_config" && <CSConfigPanel />}
+          {activeTab === "webhooks" && <WebhooksPanel />}
+          {activeTab === "api_keys" && <ApiKeysPanel />}
+          {activeTab === "docs" && <DocsPanel />}
         </div>
       </div>
     </DashboardShell>

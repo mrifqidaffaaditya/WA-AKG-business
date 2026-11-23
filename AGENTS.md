@@ -1,10 +1,11 @@
 # AGENTS.md — OpenCode Agent Instructions
 
 ## Project Architecture
-- **`backend/`** — Express.js + Socket.io + Baileys (WhatsApp) + SQLite/Drizzle ORM, port 4000
-- **`frontend/`** — Next.js latest (App Router) + Tailwind CSS, port 4041
-- **`nginx.conf`** — Reverse proxy, only port 4040 exposed to host
-- **`docker-compose.yml`** — 4 services: nginx, frontend, backend, redis
+- **`backend/`** — Express.js + Socket.io + Baileys (WhatsApp) + SQLite/Drizzle ORM, port 4005 (or configured APP_PORT)
+- **`frontend/`** — Next.js 15 (App Router) + Tailwind CSS, port 4041
+- **`nginx/`** — `aapanel.conf` (reverse proxy for aaPanel) & `nginx.full.conf` (generic standalone config)
+- **`docker-compose.yml`** — 2 active services (backend + frontend), with commented optional redis and nginx services
+- **`ecosystem.config.cjs`** — PM2 process definition for native, lightweight (~150MB) execution
 
 ## Build & Deploy
 ```bash

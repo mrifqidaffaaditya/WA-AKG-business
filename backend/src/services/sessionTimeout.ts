@@ -9,6 +9,7 @@ import { requestDashboardBroadcast } from "./dashboard.js";
 import { createAuditLog } from "../utils/audit.js";
 import { logger } from "../utils/logger.js";
 import { generateId } from "../utils/id.js";
+import { dispatchWebhookEvent } from "./webhook.js";
 
 let timeoutInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -111,6 +112,12 @@ async function checkSessionTimeout() {
           .where(eq(schema.conversations.id, id));
 
         broadcast("conversation:status", { conversationId: id, status: "resolved" });
+        dispatchWebhookEvent("conversation.resolved", {
+          conversationId: id,
+          resolvedBy: "system",
+          reason: "session_timeout",
+          resolvedAt: now,
+        });
 
         createAuditLog({
           userId: "system",

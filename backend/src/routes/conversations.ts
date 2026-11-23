@@ -22,6 +22,7 @@ import { sendNotificationToUser } from "../services/notifications.js";
 import { getCsConfig } from "../services/csConfig.js";
 import { notifyClaim, notifyResolve, notifyReactivate } from "../services/waGroupNotif.js";
 import { createAuditLog } from "../utils/audit.js";
+import { dispatchWebhookEvent } from "../services/webhook.js";
 import { db, schema } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import { writeFileSync, existsSync, mkdirSync } from "fs";
@@ -312,6 +313,13 @@ router.post("/:id/messages", async (req: AuthRequest, res: Response) => {
 
     const messageWithCsName = { ...msg, cs_name: csUser?.name || null };
     broadcast("conversation:message", { conversationId: id, message: messageWithCsName });
+    dispatchWebhookEvent("message.sent", {
+      conversationId: id,
+      sender: "cs",
+      csId: user.sub,
+      csName: csUser?.name,
+      message: messageWithCsName,
+    });
     res.status(201).json(messageWithCsName);
   } catch (err) {
     logger.error("[conversations] Message error:", err);
@@ -344,6 +352,12 @@ router.post("/:id/claim", async (req: AuthRequest, res: Response) => {
 
     broadcast("conversation:claimed", { conversationId: id, claimedBy: user.sub, status: "active" });
     broadcast("conversation:status", { conversationId: id, status: "active", claimedBy: user.sub });
+    dispatchWebhookEvent("conversation.claimed", {
+      conversationId: id,
+      claimedBy: user.sub,
+      status: "active",
+      claimedAt: new Date().toISOString(),
+    });
 
     sendNotificationToUser(user.sub, {
       title: "Percakapan Diklaim",
@@ -452,6 +466,13 @@ router.post("/:id/resolve", requireConversationAccess, async (req: AuthRequest, 
 
     broadcast("conversation:status", { conversationId: id, status: "resolved" });
     broadcast("queue:update", { count: await getQueueCount() });
+    dispatchWebhookEvent("conversation.resolved", {
+      conversationId: id,
+      resolvedBy: user.sub,
+      rating: rating || null,
+      review: review || null,
+      resolvedAt: new Date().toISOString(),
+    });
 
     const csUserRows = await db.select().from(schema.users).where(eq(schema.users.id, user.sub)).limit(1);
     const csUser = csUserRows[0];

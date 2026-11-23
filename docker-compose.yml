@@ -1,88 +1,91 @@
 services:
-  nginx:
-    image: nginx:alpine
-    container_name: wa-akg-nginx
-    restart: unless-stopped
-    ports:
-      - "${PORT:-4040}:4040"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - frontend
-      - backend
-    networks:
-      - wa_akg
-
-  frontend:
-    build: ./frontend
-    container_name: wa-akg-frontend
-    restart: unless-stopped
-    expose:
-      - "4041"
-    environment:
-      - PORT=4041
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=
-      - NEXT_PUBLIC_VAPID_KEY=${NEXT_PUBLIC_VAPID_KEY}
-    depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - wa_akg
-
+  # ── Core Service 1: Backend (Express + Socket.io + Baileys + SQLite) ───────
   backend:
-    build: ./backend
+    image: wa-akg-business-backend:latest
+    build:
+      context: ./backend
     container_name: wa-akg-backend
     restart: unless-stopped
-    expose:
-      - "4000"
+    cgroup_parent: /
+    # network_mode: host connects directly to aaPanel Redis (127.0.0.1:6379)
+    # If running isolated bridge network instead, comment network_mode and uncomment ports/extra_hosts
+    network_mode: host
+    # ports:
+    #   - "${APP_PORT:-4005}:4005"
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
     env_file:
       - .env
     environment:
-      - APP_PORT=4000
+      - APP_PORT=${APP_PORT:-4005}
       - DB_PATH=file:/app/data/wa_akg.db
       - WA_SESSION_PATH=/app/sessions
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_HOST=${REDIS_HOST:-127.0.0.1}
+      - REDIS_PORT=${REDIS_PORT:-6379}
       - NODE_ENV=production
-      - CORS_ORIGIN=${FRONTEND_URL:-http://localhost:4040}
+      - CORS_ORIGIN=${FRONTEND_URL:-https://wa-akg-business.aikeigroup.net}
     volumes:
       - app_data:/app/data
       - app_sessions:/app/sessions
       - ./uploads:/app/public/uploads
-    depends_on:
-      redis:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:${APP_PORT:-4005}/api/health"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - wa_akg
 
-  redis:
-    image: redis:7-alpine
-    container_name: wa-akg-redis
+  # ── Core Service 2: Frontend (Next.js 15 Standalone) ──────────────────────
+  frontend:
+    image: wa-akg-business-frontend:latest
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_VAPID_KEY: ${NEXT_PUBLIC_VAPID_KEY}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    container_name: wa-akg-frontend
     restart: unless-stopped
-    expose:
-      - "6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - wa_akg
+    cgroup_parent: /
+    network_mode: host
+    # ports:
+    #   - "${FRONTEND_PORT:-4041}:4041"
+    environment:
+      - PORT=${FRONTEND_PORT:-4041}
+      - NODE_ENV=production
+      - BACKEND_URL=http://127.0.0.1:${APP_PORT:-4005}
+      - NEXT_PUBLIC_API_URL=
+      - NEXT_PUBLIC_VAPID_KEY=${NEXT_PUBLIC_VAPID_KEY}
+
+  # ── Optional: All-in-One Nginx Reverse Proxy (Uncomment if NOT using aaPanel/Cloudflare Tunnel) ──
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: wa-akg-nginx
+  #   restart: unless-stopped
+  #   cgroup_parent: /
+  #   ports:
+  #     - "${PORT:-4040}:4040"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     - frontend
+  #     - backend
+
+  # ── Optional: Containerized Redis (Uncomment if server lacks native aaPanel Redis) ────────────
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: wa-akg-redis
+  #   restart: unless-stopped
+  #   cgroup_parent: /
+  #   expose:
+  #     - "6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
 
 volumes:
   app_data:
   app_sessions:
-  redis_data:
-
-networks:
-  wa_akg:
-    driver: bridge
-
+  # redis_data: # Uncomment if using containerized redis

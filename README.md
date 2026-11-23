@@ -94,50 +94,67 @@ The system uses **Baileys** as WhatsApp gateway (no WhatsApp Business API requir
 - Scroll position preserved when loading older messages
 - Auto-scroll to latest message on room entry
 
+### Webhooks & Real-time Event Streaming
+- Outgoing webhooks with HMAC-SHA256 signature verification (`X-WA-AKG-Signature`)
+- Automatic retry mechanism (up to 3 attempts with exponential backoff)
+- SSRF protection against private IP & cloud metadata addresses
+- Real-time delivery monitoring via WebSocket & Admin UI
+- Supported events: `message.received`, `message.sent`, `conversation.created`, `conversation.status_changed`, `conversation.claimed`, `conversation.resolved`, `stock.updated`, `ping`
+
+### Developer REST API (v1) & Interactive Docs
+- Public Developer API at `/api/v1` with granular API Key scoping (`messages:send`, `broadcast`, `conversations:read`, etc.)
+- Single and bulk staggered WhatsApp message delivery
+- Interactive OpenAPI 3.0 documentation served at `/api/docs`
+- JSON specification at `/api/docs/openapi.json`
+- In-dashboard API Key management with zero-knowledge SHA-256 key storage
+
 ### Dashboard
 - **CS Panel:** Waiting Queue, My Chats, All Chats tabs, inline chat window, drag-and-drop file upload, queue badge, claim popup, sound notifications
-- **Admin Panel:** Bot config, Stock config, User CRUD, Gateway status + QR, CS Settings (signature, quick replies, auto-reply, WA group notifications), CS Performance table (per-user stats + ratings), Audit log
+- **Admin Panel:** Bot config, Stock config, User CRUD, Gateway status + QR, Webhooks manager, API Keys manager, Embedded Docs, CS Settings (signature, quick replies, auto-reply, WA group notifications), CS Performance table (per-user stats + ratings), Audit log
 - **Dark theme** (OLED-friendly) — no light-mode elements
 - **Premium modals** — all native alert/confirm replaced with custom dark-themed modals
 
 ### Security
+- **0 npm audit vulnerabilities** across frontend and backend dependencies
 - JWT access token (15 min) httpOnly cookie + refresh token (7 days)
-- Bcrypt password hashing (12 rounds)
+- API Keys stored as SHA-256 hashes with constant-time verification (`crypto.timingSafeEqual`)
+- Webhook signature verification with HMAC-SHA256
+- SSRF protection on outgoing webhooks and database connectors
+- Bcrypt password hashing (12 rounds) with dummy comparison against user enumeration
 - Role-Based Access Control (super_admin, admin, cs)
 - Next.js server-side middleware (auth guard + role check before render)
 - Backend middleware (conversation access validation: 404 vs 403)
 - Frontend client-side guards (URL cleanup, null safety)
-- Rate limiting on login endpoint (brute-force protection)
+- Rate limiting on API keys, login, profile, and refresh endpoints
 - Session invalidation on logout
-- CORS policy
-- Audit log for all admin + CS actions (claim, resolve, config changes)
+- Strict CORS policy & security response headers (CSP, HSTS, X-Content-Type-Options)
+- Audit log for all admin + CS actions (claim, resolve, config changes, API key creation, webhooks)
 
 ---
 
-## Architecture
+## Architecture & Deployment Options
 
-Split architecture with Nginx reverse proxy. Only port 4040 is exposed:
+WA-AKG Business supports both **PM2 Native** and **Docker Compose** architectures:
 
 ```
-Browser → Port 4040 (Nginx)
+Browser / Cloudflare Tunnel
              │
-             ├── /api/*  ──→ backend:4000  (Express + Socket.io)
-             ├── /socket.io/* → backend:4000  (WebSocket)
-             └── /*  ───→ frontend:4041  (Next.js 14 SSR)
-
-Backend (4000)  ← internal only
-  ├── Express REST API
-  ├── Socket.io (WebSocket)
-  ├── Baileys WA Gateway
-  ├── AI Chatbot Service
-  ├── Stock Integration
-  └── SQLite + Drizzle ORM
-
-Frontend (4041)  ← internal only
-  ├── Next.js 14 (App Router)
-  ├── Tailwind CSS (dark theme)
-  └── Socket.io Client
+             ▼
+aaPanel / Nginx Reverse Proxy (Port 80/443 or 4040)
+             │
+             ├── /api/*       ──→ Backend: 4005 (Express REST API v1 & Docs)
+             ├── /socket.io/* ──→ Backend: 4005 (Realtime WebSocket)
+             ├── /uploads/*   ──→ Backend: 4005 (Media files)
+             └── /*           ──→ Frontend: 4041 (Next.js 15 Standalone UI)
 ```
+
+### Production Options:
+1. **PM2 Native Deployment (Ultra-Lightweight, ~150MB RAM)**:
+   - Runs backend on `4005` and frontend on `4041` with host Redis (`127.0.0.1:6379`).
+   - Reverse-proxied via aaPanel Nginx (snippet available at `nginx/aapanel.conf`).
+2. **Docker Compose**:
+   - `backend` and `frontend` in containers (`network_mode: host` by default).
+   - `redis` and `nginx` included as optional commented-out services for standalone environments.
 
 ---
 
@@ -145,39 +162,46 @@ Frontend (4041)  ← internal only
 
 | Layer | Technology |
 |---|---|
-| **Backend** | Node.js + Express + Socket.io |
-| **Frontend** | Next.js 14 (App Router), React 18, Tailwind CSS |
+| **Backend** | Node.js 22 + Express 4/5 + Socket.io 4 |
+| **Frontend** | Next.js 15 (App Router, Standalone), React 19, Tailwind CSS |
 | **WA Gateway** | [Baileys](https://github.com/WhiskeySockets/Baileys) |
 | **Auth** | JWT (access + refresh tokens) + bcrypt |
 | **Database** | SQLite via [Drizzle ORM](https://orm.drizzle.team/) |
 | **Realtime** | [Socket.io](https://socket.io/) |
 | **Push Notif** | [web-push](https://github.com/web-push-libs/web-push) (VAPID) |
 | **AI** | OpenAI-compatible API (any provider) |
-| **Proxy** | Nginx |
-| **Deployment** | Docker Compose |
+| **Process Manager**| PM2 (`ecosystem.config.cjs`) |
+| **Proxy** | aaPanel Nginx / Standalone Nginx (`nginx/aapanel.conf`) |
 
 ---
 
 ## Quick Start
 
-### Docker (Recommended — 3 steps)
+### Option A: PM2 Native (Instant & Lightweight)
 
 ```bash
 git clone https://github.com/mrifqidaffaaditya/WA-AKG-business.git
 cd WA-AKG-business
 
-cp .env.example .env          # Edit .env: set APP_SECRET & AI_API_KEY
-docker compose up --build      # Auto-build → migrate → seed → start
+# Configure .env
+cp .env.example .env
+
+# Run migrations and seed runner
+cd backend && npm install && npm run build && npm run db:push && npm run seed && cd ..
+cd frontend && npm install && npm run build && cd ..
+
+# Launch via PM2
+pm2 start ecosystem.config.cjs && pm2 save
 ```
 
-Done. Open `http://localhost:4040` and login.
+### Option B: Docker Compose
 
-| Service | Port (Internal) | Exposed |
-|---|---|---|
-| Nginx | 4040 | Yes |
-| Frontend | 4041 | No |
-| Backend | 4000 | No |
-| Redis | 6379 | 6380 (host) |
+```bash
+git clone https://github.com/mrifqidaffaaditya/WA-AKG-business.git
+cd WA-AKG-business
+cp .env.example .env
+docker compose up -d
+```
 
 ### Manual (Development)
 

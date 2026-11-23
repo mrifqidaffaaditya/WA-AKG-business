@@ -20,6 +20,7 @@ import { requestDashboardBroadcast } from "./dashboard.js";
 import { notifyNewCustomer, notifyEscalation } from "./waGroupNotif.js";
 import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
+import { dispatchWebhookEvent } from "./webhook.js";
 import { proto } from "@whiskeysockets/baileys";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
@@ -151,6 +152,14 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
       claimed_by: null,
       updated_at: new Date().toISOString(),
     });
+    dispatchWebhookEvent("conversation.created", {
+      conversationId: activeConv.id,
+      customer: {
+        id: customer.id,
+        waNumber,
+        displayName: pushName,
+      },
+    });
     await emitQueueCount();
   }
 
@@ -245,6 +254,15 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
 
   if (savedMsg) {
     requestDashboardBroadcast();
+    dispatchWebhookEvent("message.received", {
+      conversationId: activeConv.id,
+      customer: {
+        id: customer.id,
+        waNumber,
+        displayName: pushName,
+      },
+      message: savedMsg,
+    });
     emitToUser(activeConv.claimed_by || "none", "conversation:message", {
       conversationId: activeConv.id,
       message: savedMsg,
@@ -294,11 +312,23 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
           conversationId: activeConv.id,
           message: botMsg,
         });
+        dispatchWebhookEvent("message.sent", {
+          conversationId: activeConv.id,
+          sender: "bot",
+          message: botMsg,
+        });
       }
 
       if (shouldEscalate) {
         await updateConversationStatus(activeConv.id, "waiting");
         activeConv.status = "waiting";
+
+        dispatchWebhookEvent("conversation.status_changed", {
+          conversationId: activeConv.id,
+          status: "waiting",
+          previousStatus: "bot",
+          reason: "escalation",
+        });
 
         broadcast("conversation:status", {
           conversationId: activeConv.id,
