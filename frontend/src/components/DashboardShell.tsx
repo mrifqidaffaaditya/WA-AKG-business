@@ -5,7 +5,8 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import Modal from "@/components/Modal";
 import { Toggle } from "@/components/ui";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, setTokens } from "@/lib/api";
+import { connect } from "@/lib/socket";
 import {
   MessageCircle,
   Settings,
@@ -26,6 +27,10 @@ import {
   Webhook,
   Key,
   FileCode2,
+  Lock,
+  Eye,
+  EyeOff,
+  RefreshCw,
 } from "lucide-react";
 
 interface DashboardShellProps {
@@ -61,9 +66,86 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         : true,
   });
 
+  // Password self-service change state
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // AI Bot status and toggle state
+  const [botActive, setBotActive] = useState<boolean | null>(null);
+  const [togglingBot, setTogglingBot] = useState(false);
+
   const isAdmin = userRole === "admin" || userRole === "super_admin";
   const basePath = isAdmin ? "/admin" : "/cs";
   const isAdminPage = pathname?.startsWith("/admin");
+
+  // Fetch initial bot status and listen to realtime socket events
+  useEffect(() => {
+    apiFetch("/api/conversations/bot-status")
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data.is_active === "boolean") {
+          setBotActive(data.is_active);
+        }
+      })
+      .catch(() => {});
+
+    try {
+      const socket = connect();
+      const handleBotStatus = (data: { is_active: boolean }) => {
+        if (typeof data?.is_active === "boolean") {
+          setBotActive(data.is_active);
+        }
+      };
+      socket.on("bot:status", handleBotStatus);
+      return () => {
+        socket.off("bot:status", handleBotStatus);
+      };
+    } catch {}
+  }, []);
+
+  const handleToggleBot = async () => {
+    if (!isAdmin || togglingBot) return;
+    setTogglingBot(true);
+    try {
+      const next = !botActive;
+      const res = await apiFetch("/api/admin/bot-config/toggle", {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: next }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBotActive(data.is_active);
+        setModalState({
+          isOpen: true,
+          title: data.is_active ? "Bot AI Diaktifkan" : "Bot AI Dinonaktifkan",
+          message: data.is_active
+            ? "Bot AI sekarang aktif dan otomatis menjawab pertanyaan pelanggan."
+            : "Bot AI dinonaktifkan. Semua pesan baru akan langsung diteruskan ke antrean CS.",
+          type: data.is_active ? "success" : "info",
+        });
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Gagal mengubah status bot");
+      }
+    } catch (err: any) {
+      setModalState({
+        isOpen: true,
+        title: "Gagal Mengubah Status Bot",
+        message: err.message || "Terjadi kesalahan saat mengubah status Bot AI.",
+        type: "error",
+      });
+    } finally {
+      setTogglingBot(false);
+    }
+  };
 
   const isTabActive = (tab: string) => {
     if (isAdminPage) {
@@ -98,34 +180,88 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       ];
 
   const handleSaveProfile = async () => {
+    setSavingProfile(true);
     try {
+      const payload: Record<string, unknown> = {
+        name: profileForm.name,
+      };
+
+      if (showPasswordChange || passwordForm.currentPassword || passwordForm.newPassword) {
+        if (!passwordForm.currentPassword) {
+          setModalState({
+            isOpen: true,
+            title: "Validasi Gagal",
+            message: "Password saat ini wajib diisi untuk mengubah password.",
+            type: "warning",
+          });
+          setSavingProfile(false);
+          return;
+        }
+        if (!passwordForm.newPassword || passwordForm.newPassword.length < 6) {
+          setModalState({
+            isOpen: true,
+            title: "Validasi Gagal",
+            message: "Password baru minimal 6 karakter.",
+            type: "warning",
+          });
+          setSavingProfile(false);
+          return;
+        }
+        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+          setModalState({
+            isOpen: true,
+            title: "Validasi Gagal",
+            message: "Konfirmasi password baru tidak cocok dengan password baru.",
+            type: "warning",
+          });
+          setSavingProfile(false);
+          return;
+        }
+        payload.currentPassword = passwordForm.currentPassword;
+        payload.password = passwordForm.newPassword;
+      }
+
       const res = await apiFetch("/api/auth/profile", {
         method: "PUT",
-        body: JSON.stringify(profileForm),
+        body: JSON.stringify(payload),
       });
+
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok) {
+        if (data.accessToken) {
+          setTokens(data.accessToken);
+        }
         updateUser({ name: profileForm.name });
         localStorage.setItem(
           "sound_enabled",
           profileForm.sound_notification.toString()
         );
+        setPasswordForm({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        });
+        setShowPasswordChange(false);
         setModalState({
           isOpen: true,
           title: "Berhasil",
-          message: "Profil berhasil disimpan",
+          message: data.message || "Profil berhasil disimpan",
           type: "success",
         });
         setSettingsOpen(false);
       } else {
-        throw new Error("Gagal menyimpan");
+        throw new Error(data.error || "Gagal menyimpan profil");
       }
-    } catch {
+    } catch (err: any) {
       setModalState({
         isOpen: true,
         title: "Error",
-        message: "Gagal menyimpan profil",
+        message: err.message || "Gagal menyimpan profil",
         type: "error",
       });
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -291,6 +427,12 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 ...f,
                 name: user?.name || "",
               }));
+              setPasswordForm({
+                currentPassword: "",
+                newPassword: "",
+                confirmPassword: "",
+              });
+              setShowPasswordChange(false);
               setSettingsOpen(true);
               setMobileOpen(false);
             }}
@@ -349,6 +491,48 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             </div>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
+            {botActive !== null && (
+              isAdmin ? (
+                <button
+                  onClick={handleToggleBot}
+                  disabled={togglingBot}
+                  title={botActive ? "Bot AI aktif melayani pelanggan. Klik untuk menonaktifkan" : "Bot AI nonaktif (pesan langsung ke CS). Klik untuk mengaktifkan"}
+                  className={`group flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer ${
+                    botActive
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-sm shadow-emerald-500/10"
+                      : "bg-slate-800/80 text-slate-400 border-slate-700/80 hover:bg-slate-800 hover:text-slate-200"
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      botActive ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" : "bg-slate-500"
+                    }`}
+                  />
+                  <Bot size={13} className="shrink-0" />
+                  <span className="font-semibold">{botActive ? "AI: ON" : "AI: OFF"}</span>
+                  <span className="hidden md:inline-block text-[10px] px-1.5 py-0.5 rounded bg-slate-900/60 border border-slate-700/50 text-slate-400 group-hover:text-slate-200">
+                    {togglingBot ? "..." : (botActive ? "Matikan" : "Nyalakan")}
+                  </span>
+                </button>
+              ) : (
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-full text-xs font-medium border ${
+                    botActive
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                      : "bg-slate-800/80 text-slate-400 border-slate-700/80"
+                  }`}
+                  title={botActive ? "Bot AI aktif melayani pesan pelanggan" : "Bot AI nonaktif, pesan langsung ke antrean CS"}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      botActive ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" : "bg-slate-500"
+                    }`}
+                  />
+                  <Bot size={13} className="shrink-0" />
+                  <span className="font-semibold">{botActive ? "AI: Aktif" : "AI: Nonaktif"}</span>
+                </div>
+              )
+            )}
             <div className="flex flex-col items-end hidden sm:flex">
               <span className="text-sm font-semibold text-slate-200 max-w-[150px] truncate">
                 {userName}
@@ -463,12 +647,127 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               />
             </div>
           </div>
+
+          {/* Fitur Ubah Password Akun Sendiri */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 space-y-3">
+            <div
+              className="flex items-center justify-between cursor-pointer select-none"
+              onClick={() => setShowPasswordChange(!showPasswordChange)}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
+                  <Lock size={15} />
+                </div>
+                <div>
+                  <span className="text-xs font-semibold text-slate-200 block">
+                    Ubah Password Akun
+                  </span>
+                  <span className="text-[10px] text-slate-500 block">
+                    Ganti kata sandi login Anda sendiri
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+              >
+                {showPasswordChange ? "Sembunyikan" : "Ubah"}
+              </button>
+            </div>
+
+            {showPasswordChange && (
+              <div className="space-y-3 pt-2.5 border-t border-slate-800">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Password Saat Ini <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? "text" : "password"}
+                      value={passwordForm.currentPassword}
+                      onChange={(e) =>
+                        setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }))
+                      }
+                      placeholder="Masukkan password lama"
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 pr-10 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                    >
+                      {showCurrentPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Password Baru (min. 6 karakter) <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={passwordForm.newPassword}
+                      onChange={(e) =>
+                        setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))
+                      }
+                      placeholder="Minimal 6 karakter"
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 pr-10 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                    >
+                      {showNewPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Konfirmasi Password Baru <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) =>
+                        setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))
+                      }
+                      placeholder="Ulangi password baru"
+                      className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 pr-10 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                    >
+                      {showConfirmPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleSaveProfile}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 py-3 text-sm font-semibold text-slate-950 transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 active:scale-[0.98] cursor-pointer"
+            disabled={savingProfile}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 py-3 text-sm font-semibold text-slate-950 transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 active:scale-[0.98] cursor-pointer disabled:opacity-50"
           >
-            <Save size={18} />
-            Simpan Perubahan
+            {savingProfile ? (
+              <>
+                <RefreshCw size={18} className="animate-spin" />
+                Menyimpan...
+              </>
+            ) : (
+              <>
+                <Save size={18} />
+                Simpan Perubahan
+              </>
+            )}
           </button>
         </div>
       </Modal>

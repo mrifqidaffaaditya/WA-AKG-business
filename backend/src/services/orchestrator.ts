@@ -139,16 +139,21 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
   }
 
   if (!activeConv) {
+    const botConfigRows = await db.select().from(schema.botConfig).limit(1);
+    const aiActive = botConfigRows.length > 0 ? (botConfigRows[0].is_active ?? true) : true;
+    const initialStatus = aiActive ? "bot" : "waiting";
+
     activeConv = await createConversation({
       customerId: customer.id,
       waNumber,
       customerName: pushName,
+      status: initialStatus,
     });
     broadcast("conversation:new", {
       id: activeConv.id,
       wa_number: waNumber,
       customer_name: pushName,
-      status: "bot",
+      status: initialStatus,
       claimed_by: null,
       updated_at: new Date().toISOString(),
     });
@@ -292,6 +297,26 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
 
   if (activeConv.status === "bot" || activeConv.status === "waiting") {
     if (activeConv.status === "bot" && content) {
+      const botConfigRows = await db.select().from(schema.botConfig).limit(1);
+      const aiActive = botConfigRows.length > 0 ? (botConfigRows[0].is_active ?? true) : true;
+
+      if (!aiActive) {
+        await updateConversationStatus(activeConv.id, "waiting");
+        await emitQueueCount();
+        broadcast("conversation:update", {
+          id: activeConv.id,
+          status: "waiting",
+          updated_at: new Date().toISOString(),
+        });
+        await sendNotificationToAllCs({
+          title: "Pesan Masuk (AI Nonaktif)",
+          body: content ? content.substring(0, 100) : "Pesan baru menunggu respon CS",
+          url: `/dashboard/conversations/${activeConv.id}`,
+          tag: `conv-${activeConv.id}`,
+        });
+        return;
+      }
+
       const { response, shouldEscalate } = await generateBotResponse(
         activeConv.id,
         waNumber,

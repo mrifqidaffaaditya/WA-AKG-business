@@ -88,6 +88,7 @@ async function getBotConfig(): Promise<{
   systemPrompt: string;
   businessInfo: string;
   escalationKeywords: string[];
+  isActive: boolean;
 } | null> {
   const rows = await db.select().from(schema.botConfig).limit(1);
   if (rows.length === 0) return null;
@@ -101,6 +102,7 @@ async function getBotConfig(): Promise<{
       .split(",")
       .map((k: string) => k.trim().toLowerCase())
       .filter(Boolean),
+    isActive: bc.is_active ?? true,
   };
 }
 
@@ -127,6 +129,13 @@ export async function generateBotResponse(
   if (!botConfig) {
     return {
       response: "Maaf, sistem sedang tidak tersedia saat ini.",
+      shouldEscalate: true,
+    };
+  }
+
+  if (!botConfig.isActive) {
+    return {
+      response: "Halo! Pesan Anda sudah kami terima. Tim Customer Service kami akan segera membalas pesan Anda.",
       shouldEscalate: true,
     };
   }

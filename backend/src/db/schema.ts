@@ -80,6 +80,9 @@ export const botConfig = sqliteTable("bot_config", {
   auto_close_enabled: integer("auto_close_enabled", { mode: "boolean" })
     .notNull()
     .default(false),
+  is_active: integer("is_active", { mode: "boolean" })
+    .notNull()
+    .default(true),
   updated_by: text("updated_by").references(() => users.id, {
     onDelete: "set null",
   }),

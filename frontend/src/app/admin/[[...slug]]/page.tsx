@@ -561,6 +561,7 @@ function BotConfigPanel() {
     session_timeout_mins: number | "";
     session_timeout_warning_mins: number | "";
     auto_close_enabled: boolean;
+    is_active: boolean;
   }>({
     persona_name: "",
     system_prompt: "",
@@ -569,6 +570,7 @@ function BotConfigPanel() {
     session_timeout_mins: 30,
     session_timeout_warning_mins: 5,
     auto_close_enabled: false,
+    is_active: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -592,11 +594,54 @@ function BotConfigPanel() {
           session_timeout_mins: config.session_timeout_mins ?? 30,
           session_timeout_warning_mins: config.session_timeout_warning_mins ?? 5,
           auto_close_enabled: config.auto_close_enabled ?? false,
+          is_active: config.is_active ?? true,
         });
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    const socket = getIO();
+    const handleBotStatus = (data: { is_active: boolean }) => {
+      if (typeof data?.is_active === "boolean") {
+        setForm((f) => ({ ...f, is_active: data.is_active }));
+      }
+    };
+    socket?.on("bot:status", handleBotStatus);
+    return () => {
+      socket?.off("bot:status", handleBotStatus);
+    };
   }, []);
+
+  const handleToggleActive = async (nextState: boolean) => {
+    setForm((f) => ({ ...f, is_active: nextState }));
+    try {
+      const res = await apiFetch("/api/admin/bot-config/toggle", {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: nextState }),
+      });
+      if (!res.ok) {
+        throw new Error("Gagal mengubah status bot");
+      }
+      const data = await res.json();
+      setForm((f) => ({ ...f, is_active: data.is_active }));
+      setModal({
+        isOpen: true,
+        title: data.is_active ? "Bot AI Diaktifkan" : "Bot AI Dinonaktifkan",
+        message: data.is_active
+          ? "Bot AI sekarang aktif dan otomatis menjawab pertanyaan pelanggan."
+          : "Bot AI dinonaktifkan. Semua pesan baru langsung diarahkan ke antrean CS.",
+        type: data.is_active ? "success" : "info",
+      });
+    } catch (err: any) {
+      setForm((f) => ({ ...f, is_active: !nextState }));
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: err.message || "Gagal mengubah status bot",
+        type: "error",
+      });
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -613,6 +658,7 @@ function BotConfigPanel() {
         ...form,
         session_timeout_mins: timeoutVal,
         session_timeout_warning_mins: warningVal,
+        is_active: form.is_active,
       };
 
       const res = await apiFetch("/api/admin/bot-config", {
@@ -664,6 +710,49 @@ function BotConfigPanel() {
         <div>
           <h2 className="text-lg font-semibold text-slate-100">Konfigurasi Bot</h2>
           <p className="text-xs text-slate-500">Persona AI dan pengaturan otomatisasi</p>
+        </div>
+      </div>
+
+      {/* Kartu Status & Sakelar Bot AI */}
+      <div className={`mb-5 rounded-xl border p-5 transition-all ${
+        form.is_active
+          ? "bg-slate-900 border-emerald-500/30 shadow-lg shadow-emerald-500/5"
+          : "bg-slate-900 border-slate-800"
+      }`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${
+              form.is_active
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                : "bg-slate-800/80 border-slate-700 text-slate-400"
+            }`}>
+              <Bot size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-100">Status Bot AI</h3>
+                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                  form.is_active
+                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                    : "bg-rose-500/15 text-rose-400 border-rose-500/30"
+                }`}>
+                  {form.is_active ? "AKTIF / ON" : "NONAKTIF / OFF"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-md">
+                {form.is_active
+                  ? "Bot AI aktif dan akan otomatis menjawab pesan pelanggan menggunakan model AI sesuai kepribadian & informasi bisnis."
+                  : "Bot AI nonaktif. Pesan baru tidak akan dijawab oleh AI dan langsung dialihkan ke antrean CS manusia (Waiting)."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 self-end sm:self-center">
+            <Toggle
+              checked={form.is_active}
+              onChange={(next) => handleToggleActive(next)}
+              label="Sakelar Status Bot AI"
+            />
+          </div>
         </div>
       </div>
 

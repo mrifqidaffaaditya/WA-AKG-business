@@ -270,6 +270,7 @@ async function run() {
     await addColumnIfNotExists("messages", "reply_to_content", "TEXT");
     await addColumnIfNotExists("messages", "reply_to_sender", "TEXT");
     await addColumnIfNotExists("bot_config", "session_timeout_warning_mins", "INTEGER NOT NULL DEFAULT 5");
+    await addColumnIfNotExists("bot_config", "is_active", "INTEGER NOT NULL DEFAULT 1");
     await addColumnIfNotExists("conversations", "warning_sent", "INTEGER NOT NULL DEFAULT 0");
 
     await client.execute("COMMIT");

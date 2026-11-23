@@ -11,7 +11,7 @@ import { previewStock, clearStockCache, syncStockNow } from "../services/stock.j
 import { logger } from "../utils/logger.js";
 import { getDashboardStats } from "../services/dashboard.js";
 import { getCsConfig, updateCsConfig, validateCsConfigFields } from "../services/csConfig.js";
-import { getActiveUserIds } from "../ws/index.js";
+import { getActiveUserIds, broadcast } from "../ws/index.js";
 import { createApiKey, listApiKeys, toggleApiKey, deleteApiKey } from "../services/apiKey.js";
 import { isSafeWebhookUrl, invalidateWebhookCache, testWebhook } from "../services/webhook.js";
 import crypto from "crypto";
@@ -24,6 +24,7 @@ const ALLOWED_BOT_CONFIG_FIELDS = [
   "session_timeout_mins",
   "session_timeout_warning_mins",
   "auto_close_enabled",
+  "is_active",
 ];
 
 function validateBotConfigFields(body: Record<string, unknown>): string | null {
@@ -39,6 +40,9 @@ function validateBotConfigFields(body: Record<string, unknown>): string | null {
   }
   if (body.auto_close_enabled !== undefined && typeof body.auto_close_enabled !== "boolean") {
     return "auto_close_enabled must be a boolean";
+  }
+  if (body.is_active !== undefined && typeof body.is_active !== "boolean") {
+    return "is_active must be a boolean";
   }
   if (body.persona_name !== undefined && typeof body.persona_name !== "string") {
     return "persona_name must be a string";
@@ -98,6 +102,7 @@ router.put("/bot-config", async (req: AuthRequest, res) => {
       session_timeout_mins,
       session_timeout_warning_mins,
       auto_close_enabled,
+      is_active,
     } = req.body;
 
     // Validate relationship: warning mins must be less than timeout mins
@@ -125,23 +130,60 @@ router.put("/bot-config", async (req: AuthRequest, res) => {
     if (session_timeout_mins !== undefined) updates.session_timeout_mins = session_timeout_mins;
     if (session_timeout_warning_mins !== undefined) updates.session_timeout_warning_mins = session_timeout_warning_mins;
     if (auto_close_enabled !== undefined) updates.auto_close_enabled = auto_close_enabled;
+    if (is_active !== undefined) updates.is_active = is_active;
 
     await db
       .update(schema.botConfig)
       .set(updates)
       .where(eq(schema.botConfig.id, existing[0].id));
 
+    if (is_active !== undefined) {
+      broadcast("bot:status", { is_active });
+    }
+
     await createAuditLog({
       userId: req.user!.sub,
       action: "update_bot_config",
       entityType: "bot_config",
       entityId: existing[0].id,
+      details: is_active !== undefined ? `AI Bot status: ${is_active ? "enabled" : "disabled"}` : undefined,
     });
 
     const updated = await db.select().from(schema.botConfig).limit(1);
     res.json(updated[0]);
   } catch (err) {
     logger.error("[admin] Bot config error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/bot-config/toggle", async (req: AuthRequest, res) => {
+  try {
+    const existing = await db.select().from(schema.botConfig).limit(1);
+    if (existing.length === 0) {
+      res.status(404).json({ error: "Bot config not found" });
+      return;
+    }
+    const current = existing[0].is_active ?? true;
+    const next = typeof req.body.is_active === "boolean" ? req.body.is_active : !current;
+
+    await db
+      .update(schema.botConfig)
+      .set({ is_active: next, updated_at: new Date().toISOString(), updated_by: req.user!.sub })
+      .where(eq(schema.botConfig.id, existing[0].id));
+
+    broadcast("bot:status", { is_active: next });
+
+    await createAuditLog({
+      userId: req.user!.sub,
+      action: next ? "bot_enabled" : "bot_disabled",
+      entityType: "bot_config",
+      entityId: existing[0].id,
+    });
+
+    res.json({ is_active: next, message: next ? "Bot AI berhasil diaktifkan" : "Bot AI berhasil dinonaktifkan" });
+  } catch (err: any) {
+    logger.error("[admin] Bot toggle error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

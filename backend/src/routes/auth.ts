@@ -196,31 +196,56 @@ router.put("/profile", authenticate, profileRateLimitPassthrough, async (req: Au
   try {
     const { name, password, currentPassword } = req.body;
     const updates: Record<string, unknown> = {};
+    let newAccessToken = "";
+    let newRefreshToken = "";
+    let passwordChanged = false;
+
+    const userRows = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, req.user!.sub))
+      .limit(1);
+
+    if (userRows.length === 0) {
+      res.status(404).json({ error: "User tidak ditemukan" });
+      return;
+    }
+
+    const currentUser = userRows[0];
 
     if (password) {
       if (!currentPassword) {
-        res.status(400).json({ error: "Current password is required to set a new password" });
+        res.status(400).json({ error: "Password saat ini wajib diisi untuk mengubah password" });
         return;
       }
-      const userRows = await db
-        .select()
-        .from(schema.users)
-        .where(eq(schema.users.id, req.user!.sub))
-        .limit(1);
-      if (userRows.length === 0) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      const valid = await comparePassword(currentPassword, userRows[0].password_hash);
+      const valid = await comparePassword(currentPassword, currentUser.password_hash);
       if (!valid) {
-        res.status(403).json({ error: "Current password is incorrect" });
+        res.status(400).json({ error: "Password saat ini salah" });
         return;
       }
+      if (typeof password !== "string" || password.length < 6) {
+        res.status(400).json({ error: "Password baru minimal 6 karakter" });
+        return;
+      }
+
       updates.password_hash = await hashPassword(password);
-      await revokeAllUserTokens(req.user!.sub);
+      await revokeAllUserTokens(currentUser.id);
+
+      // Generate new tokens so user session remains uninterrupted
+      newAccessToken = generateAccessToken({
+        id: currentUser.id,
+        email: currentUser.email,
+        name: (updates.name as string) || currentUser.name,
+        role: currentUser.role as any,
+      });
+      newRefreshToken = generateRefreshToken();
+      await storeRefreshToken(currentUser.id, newRefreshToken);
+      passwordChanged = true;
     }
 
-    if (name) updates.name = name;
+    if (name && typeof name === "string" && name.trim()) {
+      updates.name = name.trim();
+    }
 
     if (Object.keys(updates).length > 0) {
       await db
@@ -234,9 +259,48 @@ router.put("/profile", authenticate, profileRateLimitPassthrough, async (req: Au
       action: "profile_update",
       entityType: "users",
       entityId: req.user!.sub,
+      details: passwordChanged ? "User updated profile and password" : "User updated profile name",
     });
 
-    res.json({ message: "Profile updated" });
+    if (passwordChanged) {
+      res.cookie("refresh_token", newRefreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: "/api/auth",
+      });
+
+      res.cookie("access_token", newAccessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 15 * 60 * 1000,
+        path: "/",
+      });
+
+      res.json({
+        message: "Profil dan password berhasil diperbarui",
+        accessToken: newAccessToken,
+        user: {
+          id: currentUser.id,
+          name: (updates.name as string) || currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role,
+        },
+      });
+      return;
+    }
+
+    res.json({
+      message: "Profil berhasil diperbarui",
+      user: {
+        id: currentUser.id,
+        name: (updates.name as string) || currentUser.name,
+        email: currentUser.email,
+        role: currentUser.role,
+      },
+    });
   } catch {
     res.status(500).json({ error: "Internal server error" });
   }

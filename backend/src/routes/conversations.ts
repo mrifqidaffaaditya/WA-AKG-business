@@ -34,6 +34,16 @@ const router = Router();
 
 router.use(authenticate);
 
+router.get("/bot-status", async (_req, res) => {
+  try {
+    const rows = await db.select({ isActive: schema.botConfig.is_active }).from(schema.botConfig).limit(1);
+    const isActive = rows.length > 0 ? (rows[0].isActive ?? true) : true;
+    res.json({ is_active: isActive });
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 function getUser(req: AuthRequest): { sub: string; role: string } {
   if (!req.user) throw new Error("Not authenticated");
   return req.user;
