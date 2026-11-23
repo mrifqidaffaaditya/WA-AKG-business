@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { getConnectionStatus, connectWa, disconnectWa } from "../services/waGateway.js";
+import { getConnectionStatus, connectWa, disconnectWa, waEvents } from "../services/waGateway.js";
 import { initOrchestrator } from "../services/orchestrator.js";
 import { logger } from "../utils/logger.js";
 import { getIO } from "../ws/index.js";
@@ -16,6 +16,18 @@ export function initGateway(): void {
     .catch((err) => logger.error("[gateway] WA Gateway init error:", err));
 
   initOrchestrator();
+
+  waEvents.on("pairing_code", (code) => {
+    try {
+      getIO().emit("gateway:pairing_code", { pairingCode: code });
+    } catch {}
+  });
+
+  waEvents.on("qr", (qr) => {
+    try {
+      getIO().emit("gateway:qr", { qr });
+    } catch {}
+  });
 
   gatewayStatusInterval = setInterval(() => {
     try {

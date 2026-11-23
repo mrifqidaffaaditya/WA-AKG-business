@@ -9,6 +9,7 @@ import {
   downloadMediaMessage,
   AnyMessageContent,
   delay,
+  Browsers,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
@@ -55,10 +56,16 @@ const msgRetryCounterCache = new SimpleCache();
 
 let sock: ReturnType<typeof makeWASocket> | null = null;
 let currentQR: string | null = null;
+let currentPairingCode: string | null = null;
 let connectionStatus: "disconnected" | "connecting" | "connected" = "disconnected";
 
 export function getConnectionStatus() {
-  return { status: connectionStatus, qr: currentQR };
+  return {
+    status: connectionStatus,
+    qr: currentQR,
+    pairingCode: currentPairingCode,
+    registered: Boolean(sock?.authState?.creds?.registered),
+  };
 }
 
 export async function connectWa(): Promise<void> {
@@ -98,7 +105,7 @@ export async function connectWa(): Promise<void> {
       error() {},
       trace() {},
     } as any,
-    browser: ["WA-AKG", "Chrome", "1.0"],
+    browser: Browsers.ubuntu("Chrome"),
     msgRetryCounterCache,
     getMessage: async (key) => {
       if (key.remoteJid && key.id) {
@@ -141,6 +148,7 @@ export async function connectWa(): Promise<void> {
     if (connection === "open") {
       connectionStatus = "connected";
       currentQR = null;
+      currentPairingCode = null;
       logger.info("[wa] Connected");
       waEvents.emit("status", "connected");
     }
@@ -151,6 +159,7 @@ export async function connectWa(): Promise<void> {
 
       connectionStatus = "disconnected";
       currentQR = null;
+      currentPairingCode = null;
 
       if (reason === DisconnectReason.loggedOut) {
         logger.warn("[wa] Logged out, needs re-auth");
@@ -190,6 +199,45 @@ export async function disconnectWa(): Promise<void> {
   }
   connectionStatus = "disconnected";
   currentQR = null;
+  currentPairingCode = null;
+}
+
+export async function requestWaPairingCode(phoneNumber: string): Promise<string> {
+  const cleanNumber = phoneNumber.replace(/[^0-9]/g, "");
+  if (!cleanNumber || cleanNumber.length < 8) {
+    throw new Error("Nomor telepon tidak valid. Masukkan nomor lengkap dengan kode negara, contoh: 628123456789");
+  }
+
+  // Ensure connection is started
+  if (!sock) {
+    await connectWa();
+  }
+
+  // Wait briefly for sock to be initialized
+  let retries = 0;
+  while (!sock && retries < 15) {
+    await delay(500);
+    retries++;
+  }
+
+  if (!sock) {
+    throw new Error("Gagal menginisialisasi WhatsApp socket");
+  }
+
+  if (sock.authState?.creds?.registered) {
+    throw new Error("WhatsApp sudah terhubung dan terdaftar!");
+  }
+
+  try {
+    const rawCode = await sock.requestPairingCode(cleanNumber);
+    // Format pairing code nicely as ABCD-1234 (standard 8-char Baileys code)
+    currentPairingCode = rawCode?.length === 8 ? `${rawCode.slice(0, 4)}-${rawCode.slice(4)}` : rawCode;
+    waEvents.emit("pairing_code", currentPairingCode);
+    return currentPairingCode;
+  } catch (err: any) {
+    logger.error("[wa] requestPairingCode error:", err);
+    throw new Error(err?.message || "Gagal mendapatkan kode pairing dari WhatsApp");
+  }
 }
 
 export async function sendWaMessage(

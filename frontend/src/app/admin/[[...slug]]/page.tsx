@@ -39,6 +39,12 @@ import {
   Zap,
   MessageCircle,
   ArrowUpRight,
+  QrCode,
+  Smartphone,
+  Copy,
+  Check,
+  KeyRound,
+  Phone,
 } from "lucide-react";
 import WebhooksPanel from "@/components/admin/WebhooksPanel";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
@@ -1504,6 +1510,11 @@ function UserPanel() {
 function GatewayPanel() {
   const [status, setStatus] = useState<"connected" | "disconnected" | "loading">("loading");
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [connectMode, setConnectMode] = useState<"pairing" | "qr">("pairing");
+  const [loadingPairing, setLoadingPairing] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [modal, setModal] = useState<{
@@ -1518,30 +1529,53 @@ function GatewayPanel() {
       apiFetch("/api/gateway/status")
         .then((res) => res.json())
         .then((data) => {
-          setStatus(data.status === "connected" ? "connected" : "disconnected");
-          if (data.status !== "connected") {
+          const isConn = data.status === "connected";
+          setStatus(isConn ? "connected" : "disconnected");
+          if (data.pairingCode) setPairingCode(data.pairingCode);
+          if (!isConn) {
             apiFetch("/api/gateway/qr")
               .then((res) => res.json())
-              .then((qr) => setQrCode(qr.qr_code || qr.qr || null))
+              .then((qr) => {
+                setQrCode(qr.qr_code || qr.qr || null);
+                if (qr.pairingCode) setPairingCode(qr.pairingCode);
+              })
               .catch(() => {});
           } else {
             setQrCode(null);
+            setPairingCode(null);
           }
         })
         .catch(() => setStatus("disconnected"));
     };
 
     fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
+    const interval = setInterval(fetchStatus, 8000);
 
     const socket = getIO();
-    socket?.on("gateway:status", (data: { status: string }) => {
-      setStatus(data.status === "connected" ? "connected" : "disconnected");
+    socket?.on("gateway:status", (data: { status: string; pairingCode?: string; qr?: string }) => {
+      const isConn = data.status === "connected";
+      setStatus(isConn ? "connected" : "disconnected");
+      if (isConn) {
+        setQrCode(null);
+        setPairingCode(null);
+      }
+      if (data.pairingCode) setPairingCode(data.pairingCode);
+      if (data.qr) setQrCode(data.qr);
+    });
+
+    socket?.on("gateway:pairing_code", (data: { pairingCode: string }) => {
+      if (data.pairingCode) setPairingCode(data.pairingCode);
+    });
+
+    socket?.on("gateway:qr", (data: { qr: string }) => {
+      if (data.qr) setQrCode(data.qr);
     });
 
     return () => {
       clearInterval(interval);
       socket?.off("gateway:status");
+      socket?.off("gateway:pairing_code");
+      socket?.off("gateway:qr");
     };
   }, []);
 
@@ -1550,9 +1584,12 @@ function GatewayPanel() {
     try {
       const res = await apiFetch("/api/gateway/disconnect", { method: "POST" });
       if (!res.ok) throw new Error("Disconnect failed");
-      setModal({ isOpen: true, title: "Berhasil", message: "Gateway WA telah diputuskan", type: "success" });
+      setStatus("disconnected");
+      setPairingCode(null);
+      setQrCode(null);
+      setModal({ isOpen: true, title: "Berhasil", message: "Gateway WhatsApp telah diputuskan.", type: "success" });
     } catch {
-      setModal({ isOpen: true, title: "Error", message: "Gagal memutuskan gateway", type: "error" });
+      setModal({ isOpen: true, title: "Error", message: "Gagal memutuskan gateway.", type: "error" });
     } finally {
       setDisconnecting(false);
     }
@@ -1563,33 +1600,81 @@ function GatewayPanel() {
     try {
       const res = await apiFetch("/api/gateway/connect", { method: "POST" });
       if (!res.ok) throw new Error("Connect failed");
-      setModal({ isOpen: true, title: "Berhasil", message: "Gateway WA sedang menghubungkan", type: "success" });
+      setModal({ isOpen: true, title: "Menginisialisasi", message: "Gateway WhatsApp sedang menginisialisasi koneksi...", type: "info" });
     } catch {
-      setModal({ isOpen: true, title: "Error", message: "Gagal menghubungkan gateway", type: "error" });
+      setModal({ isOpen: true, title: "Error", message: "Gagal menghubungkan gateway.", type: "error" });
     } finally {
       setConnecting(false);
     }
   };
 
+  const handleRequestPairingCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = phoneNumber.replace(/[^0-9]/g, "");
+    if (!clean || clean.length < 9) {
+      setModal({
+        isOpen: true,
+        title: "Nomor Tidak Valid",
+        message: "Masukkan nomor WhatsApp lengkap dengan kode negara (contoh: 6281234567890).",
+        type: "error",
+      });
+      return;
+    }
+
+    setLoadingPairing(true);
+    try {
+      const res = await apiFetch("/api/gateway/pairing-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber: clean }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal meminta kode pairing.");
+
+      setPairingCode(data.code);
+      setModal({
+        isOpen: true,
+        title: "Kode Pairing Diterima",
+        message: `Kode pairing WhatsApp Anda adalah: ${data.code}. Masukkan kode ini pada WhatsApp di HP Anda.`,
+        type: "success",
+      });
+    } catch (err: any) {
+      setModal({
+        isOpen: true,
+        title: "Gagal Mendapatkan Kode",
+        message: err.message || "Pastikan WhatsApp belum terhubung ke perangkat lain.",
+        type: "error",
+      });
+    } finally {
+      setLoadingPairing(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
   const statusConfig = {
     connected: {
-      color: "from-amber-500/20 to-amber-500/5 border-amber-500/20",
-      dot: "bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
-      label: "Terhubung",
+      color: "from-emerald-500/15 via-slate-900 to-slate-950 border-emerald-500/30",
+      dot: "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]",
+      label: "Terhubung (Online)",
       icon: Wifi,
-      iconColor: "text-amber-400",
+      iconColor: "text-emerald-400",
     },
     disconnected: {
-      color: "from-rose-500/10 to-rose-500/5 border-rose-500/20",
-      dot: "bg-rose-400",
-      label: "Terputus",
+      color: "from-rose-500/10 via-slate-900 to-slate-950 border-rose-500/30",
+      dot: "bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.5)]",
+      label: "Terputus (Offline)",
       icon: WifiOff,
       iconColor: "text-rose-400",
     },
     loading: {
-      color: "from-amber-500/10 to-amber-500/5 border-amber-500/20",
-      dot: "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.5)]",
-      label: "Memeriksa...",
+      color: "from-amber-500/10 via-slate-900 to-slate-950 border-amber-500/30",
+      dot: "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.6)]",
+      label: "Memeriksa Status...",
       icon: Activity,
       iconColor: "text-amber-400",
     },
@@ -1599,78 +1684,240 @@ function GatewayPanel() {
   const StatusIcon = current.icon;
 
   return (
-    <div className="max-w-lg animate-fadeIn">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-          <Radio size={16} className="text-amber-400" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-slate-100">WhatsApp Gateway</h2>
-          <p className="text-xs text-slate-500">Status koneksi WhatsApp</p>
-        </div>
-      </div>
-
-      <div className={"rounded-xl border bg-gradient-to-b p-6 " + current.color}>
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-xl bg-slate-950/50 flex items-center justify-center border border-slate-800/50">
-            <StatusIcon size={20} className={current.iconColor} />
+    <div className="max-w-2xl mx-auto space-y-6 animate-fadeIn px-2 sm:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border border-slate-800">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+            <Radio size={20} className="text-amber-400" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className={"w-2 h-2 rounded-full " + current.dot} />
-              <span className="text-sm font-semibold text-slate-200">{current.label}</span>
-            </div>
-            <p className="text-[10px] text-slate-500 mt-0.5">
-              {status === "connected" ? "WhatsApp terhubung dan siap melayani" : status === "disconnected" ? "Gateway tidak terhubung" : "Menghubungkan..."}
-            </p>
+            <h2 className="text-lg font-bold text-slate-100">WhatsApp Gateway</h2>
+            <p className="text-xs text-slate-400">Hubungkan bot customer service via QR Code atau Kode Pairing HP</p>
           </div>
-          {status === "disconnected" && (
+        </div>
+
+        <div className="flex items-center gap-2">
+          {status === "connected" ? (
             <button
-              onClick={() => {
-                apiFetch("/api/gateway/qr")
-                  .then((r) => r.json())
-                  .then((d) => setQrCode(d.qr_code || d.qr || null))
-                  .catch(() => {});
-              }}
-              className="ml-auto flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-400 hover:bg-slate-800 transition-colors"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold transition-all disabled:opacity-50"
             >
-              <RefreshCw size={12} />
-              Refresh QR
+              <Power size={14} />
+              {disconnecting ? "Memutuskan..." : "Disconnect WhatsApp"}
+            </button>
+          ) : (
+            <button
+              onClick={handleConnect}
+              disabled={connecting}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 text-xs font-semibold transition-all disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={connecting ? "animate-spin" : ""} />
+              {connecting ? "Menghubungkan..." : "Reconnect Gateway"}
             </button>
           )}
         </div>
+      </div>
 
-        {qrCode && status === "disconnected" && (
-          <div className="flex flex-col items-center gap-3 mb-5">
-            <p className="text-xs text-slate-400">Scan QR code ini dengan WhatsApp</p>
-            <div className="rounded-xl bg-white p-4 shadow-lg">
-              <img
-                src={qrCode.startsWith("data:") ? qrCode : "data:image/png;base64," + qrCode}
-                alt="QR Code"
-                className="w-48 h-48"
-              />
+      {/* Main Status Card */}
+      <div className={"rounded-2xl border p-5 sm:p-6 bg-gradient-to-b " + current.color}>
+        {/* Status indicator bar */}
+        <div className="flex items-center justify-between pb-5 border-b border-slate-800/80">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-center">
+              <StatusIcon size={20} className={current.iconColor} />
             </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className={"w-2.5 h-2.5 rounded-full " + current.dot} />
+                <span className="text-sm font-bold text-slate-200">{current.label}</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {status === "connected"
+                  ? "Bot AI & CS siap menerima dan merespon pesan WhatsApp customer."
+                  : "Gateway belum aktif. Pilih metode koneksi di bawah untuk menautkan perangkat."}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Connection Modes when Disconnected */}
+        {status !== "connected" && (
+          <div className="pt-6 space-y-6">
+            {/* Mode Tabs */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950/80 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setConnectMode("pairing")}
+                className={
+                  "flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold transition-all " +
+                  (connectMode === "pairing"
+                    ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900")
+                }
+              >
+                <Smartphone size={16} />
+                <span>Kode Pairing (HP)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConnectMode("qr")}
+                className={
+                  "flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold transition-all " +
+                  (connectMode === "qr"
+                    ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900")
+                }
+              >
+                <QrCode size={16} />
+                <span>Scan QR Code</span>
+              </button>
+            </div>
+
+            {/* TAB 1: PAIRING CODE */}
+            {connectMode === "pairing" && (
+              <div className="space-y-5 animate-fadeIn">
+                <form onSubmit={handleRequestPairingCode} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                      Nomor WhatsApp Anda
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                        <Phone size={16} />
+                      </div>
+                      <input
+                        type="tel"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder="Contoh: 6281234567890"
+                        className="w-full pl-10 pr-4 py-3 bg-slate-950/90 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 font-mono tracking-wider transition-all"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1.5">
+                      Gunakan format internasional tanpa spasi atau tanda plus (contoh: <strong>6281234567890</strong>).
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loadingPairing}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-amber-500/20 disabled:opacity-50 cursor-pointer"
+                  >
+                    {loadingPairing ? (
+                      <>
+                        <RefreshCw size={16} className="animate-spin" />
+                        <span>Menghubungi Server WhatsApp...</span>
+                      </>
+                    ) : (
+                      <>
+                        <KeyRound size={16} />
+                        <span>Dapatkan Kode Pairing</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                {/* Display Pairing Code if available */}
+                {pairingCode && (
+                  <div className="p-5 rounded-2xl bg-slate-950 border-2 border-amber-500/40 shadow-2xl space-y-4 animate-scaleUp">
+                    <div className="text-center">
+                      <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-widest bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+                        Kode Pairing WhatsApp Anda
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="px-6 py-3 rounded-xl bg-slate-900 border border-amber-500/40 text-2xl sm:text-3xl font-extrabold font-mono tracking-widest text-amber-400 shadow-inner select-all">
+                        {pairingCode}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(pairingCode.replace(/-/g, ""))}
+                        className="p-3.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 transition-colors cursor-pointer"
+                        title="Salin Kode"
+                      >
+                        {copiedCode ? <Check size={20} className="text-emerald-400" /> : <Copy size={20} />}
+                      </button>
+                    </div>
+
+                    {copiedCode && (
+                      <p className="text-center text-xs text-emerald-400 font-medium">
+                        ✓ Kode berhasil disalin ke clipboard!
+                      </p>
+                    )}
+
+                    {/* Step-by-step instructions */}
+                    <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 text-xs text-slate-300">
+                      <p className="font-semibold text-slate-200">Cara Tautkan di WhatsApp HP:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-slate-400">
+                        <li>Buka aplikasi WhatsApp di smartphone Anda.</li>
+                        <li>Buka Menu (titik tiga) atau Pengaturan ➔ <strong>Perangkat Tertaut</strong>.</li>
+                        <li>Ketuk <strong>Tautkan Perangkat</strong>.</li>
+                        <li>Pilih <strong>Tautkan dengan nomor telepon saja</strong> (di bawah pemindai QR).</li>
+                        <li>Masukkan 8 karakter kode pairing di atas.</li>
+                      </ol>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: QR CODE */}
+            {connectMode === "qr" && (
+              <div className="flex flex-col items-center gap-4 animate-fadeIn">
+                {qrCode ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="p-3 bg-white rounded-2xl shadow-2xl border border-slate-800">
+                      <img
+                        src={qrCode.startsWith("data:") ? qrCode : "data:image/png;base64," + qrCode}
+                        alt="WhatsApp QR Code"
+                        className="w-48 h-48 sm:w-56 sm:h-56 object-contain"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-400 text-center max-w-xs">
+                      Buka WhatsApp di HP ➔ <strong>Perangkat Tertaut</strong> ➔ Arahkan kamera ke QR Code ini.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        apiFetch("/api/gateway/qr")
+                          .then((r) => r.json())
+                          .then((d) => setQrCode(d.qr_code || d.qr || null))
+                          .catch(() => {});
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-xs text-slate-300 hover:bg-slate-800 transition-colors"
+                    >
+                      <RefreshCw size={12} />
+                      <span>Perbarui QR Code</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 w-full">
+                    <RefreshCw size={24} className="animate-spin text-amber-400 mx-auto mb-2" />
+                    <p className="text-xs text-slate-400">Sedang memuat QR Code dari server WhatsApp...</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleConnect}
-            disabled={connecting || status === "connected"}
-            className="flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Link2 size={15} />
-            {connecting ? "Menghubungkan..." : "Connect"}
-          </button>
-          <button
-            onClick={handleDisconnect}
-            disabled={disconnecting || status !== "connected"}
-            className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-4 py-2.5 text-sm font-medium text-rose-400 hover:bg-rose-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Power size={15} />
-            {disconnecting ? "Memutuskan..." : "Disconnect"}
-          </button>
-        </div>
+        {/* When Connected */}
+        {status === "connected" && (
+          <div className="pt-6 space-y-4">
+            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <Check size={16} /> WhatsApp Berhasil Terhubung
+              </p>
+              <p className="text-slate-400">
+                Sesi WhatsApp aktif disimpan di server. Anda dapat menerima obrolan langsung dari customer, mengirim broadcast pesan, serta menyinkronkan stok secara otomatis.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       <Modal

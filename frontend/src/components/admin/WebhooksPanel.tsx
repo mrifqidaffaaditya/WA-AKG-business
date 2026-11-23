@@ -81,6 +81,13 @@ export default function WebhooksPanel() {
     content: string;
   }>({ isOpen: false, title: "", content: "" });
 
+  // Delete Confirm Modal State
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    id: string;
+    name: string;
+  }>({ isOpen: false, id: "", name: "" });
+
   // Feedback Modal
   const [feedback, setFeedback] = useState<{
     isOpen: boolean;
@@ -254,8 +261,13 @@ export default function WebhooksPanel() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Hapus webhook "${name}"? Tindakan ini tidak dapat dibatalkan.`)) return;
+  const handleDelete = (id: string, name: string) => {
+    setDeleteConfirm({ isOpen: true, id, name });
+  };
+
+  const confirmDelete = async () => {
+    const { id, name } = deleteConfirm;
+    setDeleteConfirm({ isOpen: false, id: "", name: "" });
     try {
       const res = await apiFetch(`/api/admin/webhooks/${id}`, { method: "DELETE" });
       if (res.ok) {
@@ -513,8 +525,8 @@ export default function WebhooksPanel() {
 
       {/* Form Modal (Create / Edit) */}
       {isFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-800 p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-slate-100">
                 {editingId ? "Edit Webhook" : "Daftarkan Webhook Baru"}
@@ -672,6 +684,18 @@ export default function WebhooksPanel() {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm({ isOpen: false, id: "", name: "" })}
+        title="Hapus Webhook"
+        message={`Apakah Anda yakin ingin menghapus webhook "${deleteConfirm.name}"? Tindakan ini tidak dapat dibatalkan.`}
+        type="warning"
+        isConfirm
+        confirmText="Hapus"
+        cancelText="Batal"
+        onConfirm={confirmDelete}
+      />
 
       <Modal
         isOpen={feedback.isOpen}

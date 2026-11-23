@@ -61,6 +61,13 @@ export default function ApiKeysPanel() {
   // Active Code Snippet Tab
   const [codeTab, setCodeTab] = useState<"curl" | "node" | "python" | "verify">("curl");
 
+  // Delete Confirm Modal State
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    id: string;
+    name: string;
+  }>({ isOpen: false, id: "", name: "" });
+
   // Feedback Modal
   const [feedback, setFeedback] = useState<{
     isOpen: boolean;
@@ -165,9 +172,13 @@ export default function ApiKeysPanel() {
     }
   };
 
-  const handleDeleteKey = async (id: string, name: string) => {
-    if (!window.confirm(`Revoke API Key "${name}"? Kunci ini tidak akan dapat digunakan lagi.`)) return;
+  const handleDeleteKey = (id: string, name: string) => {
+    setDeleteConfirm({ isOpen: true, id, name });
+  };
 
+  const confirmDeleteKey = async () => {
+    const { id, name } = deleteConfirm;
+    setDeleteConfirm({ isOpen: false, id: "", name: "" });
     try {
       const res = await apiFetch(`/api/admin/api-keys/${id}`, { method: "DELETE" });
       if (res.ok) {
@@ -457,8 +468,8 @@ app.post("/webhook-endpoint", (req, res) => {
 
       {/* Modal: Create Key */}
       {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-800 p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-slate-100">Buat API Key Baru</h3>
               <button
@@ -529,8 +540,8 @@ app.post("/webhook-endpoint", (req, res) => {
 
       {/* Modal: New Key Created (Raw Key displayed once) */}
       {newKeyModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-amber-500/40 p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-900 border border-amber-500/40 p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-2 text-amber-400 border-b border-slate-800 pb-3">
               <ShieldCheck size={22} />
               <h3 className="text-base font-bold text-slate-100">API Key Berhasil Dibuat!</h3>
@@ -551,12 +562,12 @@ app.post("/webhook-endpoint", (req, res) => {
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-800">
               <span className="text-[11px] text-slate-500">Nama: {newKeyModal.name}</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => copyToClipboard(newKeyModal.rawKey, true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-amber-500/20"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-amber-500/20"
                 >
                   {copiedNewKey ? <Check size={14} /> : <Copy size={14} />}
                   <span>{copiedNewKey ? "Tersalin ke Clipboard!" : "Salin Kunci"}</span>
@@ -572,6 +583,18 @@ app.post("/webhook-endpoint", (req, res) => {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm({ isOpen: false, id: "", name: "" })}
+        title="Revoke API Key"
+        message={`Apakah Anda yakin ingin merevoke API Key "${deleteConfirm.name}"? Kunci ini tidak akan dapat digunakan lagi untuk memanggil API.`}
+        type="warning"
+        isConfirm
+        confirmText="Revoke"
+        cancelText="Batal"
+        onConfirm={confirmDeleteKey}
+      />
 
       <Modal
         isOpen={feedback.isOpen}

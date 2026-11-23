@@ -54,7 +54,18 @@ export function middleware(request: NextRequest) {
 
   // Redirect invalid admin paths to dashboard
   if (pathname.startsWith("/admin/")) {
-    const validAdminTabs = ["dashboard", "bot", "stock", "users", "gateway", "audit", "cs_config"];
+    const validAdminTabs = [
+      "dashboard",
+      "bot",
+      "stock",
+      "users",
+      "gateway",
+      "audit",
+      "cs_config",
+      "webhooks",
+      "api_keys",
+      "docs",
+    ];
     const adminSegment = pathname.replace("/admin/", "").split("/")[0];
     if (adminSegment && !validAdminTabs.includes(adminSegment)) {
       return NextResponse.redirect(new URL("/admin", request.url));
