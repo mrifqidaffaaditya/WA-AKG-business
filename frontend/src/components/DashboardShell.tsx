@@ -8,6 +8,7 @@ import { Toggle } from "@/components/ui";
 import { apiFetch, setTokens } from "@/lib/api";
 import { connect } from "@/lib/socket";
 import { setupPushNotifications } from "@/lib/push";
+import { InstallPwaButton } from "@/components/InstallPwaButton";
 import {
   MessageCircle,
   Settings,
@@ -322,8 +323,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       >
         <div className="flex items-center justify-between px-4 h-16 border-b border-slate-800/50 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400/20 to-amber-600/20 border border-amber-500/20 flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/10">
-              <MessageCircle size={20} className="text-amber-400" />
+            <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0 p-1.5 shadow-sm">
+              <img src="/icon.svg" alt="WA-AKG Logo" className="w-full h-full object-contain" />
             </div>
             {(!collapsed || mobileOpen) && (
               <span className="text-base font-bold text-slate-100 tracking-tight truncate">
@@ -423,6 +424,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               <span className="truncate font-medium">Collapse</span>
             )}
           </button>
+
+          {(!collapsed || mobileOpen) && (
+            <InstallPwaButton variant="sidebar" className="mb-1" />
+          )}
 
           <button
             onClick={() => {

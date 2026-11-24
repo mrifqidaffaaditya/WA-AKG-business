@@ -2,8 +2,9 @@
 
 import { useState, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MessageCircle, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { InstallPwaButton } from "@/components/InstallPwaButton";
 
 export default function LoginPage() {
   return (
@@ -116,8 +117,8 @@ function LoginForm() {
 
       <div className="relative w-full max-w-md animate-scaleUp">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 border border-amber-500/10 flex items-center justify-center mx-auto mb-5 shadow-[0_0_30px_rgba(245,158,11,0.10)]">
-            <MessageCircle size={26} className="text-amber-400" />
+          <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto mb-5 shadow-[0_0_30px_rgba(12,145,154,0.15)] p-2.5">
+            <img src="/icon.svg" alt="WA-AKG Logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-xl font-bold text-slate-100 tracking-tight">
             WA-AKG Business
@@ -190,6 +191,8 @@ function LoginForm() {
             </button>
           </form>
         </div>
+
+        <InstallPwaButton variant="banner" className="mt-4" />
 
         <p className="text-center mt-6 text-[11px] text-slate-600">
           WA-AKG Business &copy; {new Date().getFullYear()}
