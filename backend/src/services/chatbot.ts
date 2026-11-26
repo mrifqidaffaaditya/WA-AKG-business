@@ -218,59 +218,82 @@ ${returningContext ? `\n[RIWAYAT PERCAKAPAN SEBELUMNYA (HANYA REFERENSI)]\n${ret
         }));
     } catch (err) { logger.debug("[chatbot] History fetch error:", err); }
 
-    const completion = await client.chat.completions.create({
-      model: config.ai.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...historyMessages,
-        { role: "user", content: customerMessage },
-      ],
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "transfer_to_cs",
-            description: "Panggil fungsi ini jika customer secara eksplisit meminta berbicara dengan CS, admin, manusia, atau jika mereka marah/komplain dan masalahnya di luar kemampuan Anda.",
-            parameters: {
-              type: "object",
-              properties: {},
-            },
+    const aiMessages = [
+      { role: "system" as const, content: systemPrompt },
+      ...historyMessages,
+      { role: "user" as const, content: customerMessage },
+    ];
+
+    const aiTools = [
+      {
+        type: "function" as const,
+        function: {
+          name: "transfer_to_cs",
+          description: "Panggil fungsi ini jika customer secara eksplisit meminta berbicara dengan CS, admin, manusia, atau jika mereka marah/komplain dan masalahnya di luar kemampuan Anda.",
+          parameters: {
+            type: "object",
+            properties: {},
           },
         },
-        {
-          type: "function",
-          function: {
-            name: "kirim_pilihan_interaktif",
-            description:
-              "Kirim pesan WhatsApp interaktif dengan tombol atau daftar pilihan. Gunakan untuk menu/katalog, konfirmasi pesanan, atau penawaran. Jangan gunakan untuk obrolan biasa.",
-            parameters: {
-              type: "object",
-              properties: {
-                title: { type: "string", description: "Judul singkat pesan (opsional)" },
-                body: { type: "string", description: "Isi pesan utama yang akan dibaca pelanggan" },
-                footer: { type: "string", description: "Catatan kaki kecil (opsional)" },
-                options: {
-                  type: "array",
-                  description: "Daftar 2-10 pilihan untuk pelanggan",
-                  items: {
-                    type: "object",
-                    properties: {
-                      label: { type: "string", description: "Teks tombol/pilihan" },
-                      value: { type: "string", description: "Nilai unik pilihan (opsional)" },
-                      description: { type: "string", description: "Deskripsi singkat (opsional, untuk daftar)" },
-                    },
-                    required: ["label"],
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "kirim_pilihan_interaktif",
+          description:
+            "Kirim pesan WhatsApp interaktif dengan tombol atau daftar pilihan. Gunakan untuk menu/katalog, konfirmasi pesanan, atau penawaran. Jangan gunakan untuk obrolan biasa.",
+          parameters: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "Judul singkat pesan (opsional)" },
+              body: { type: "string", description: "Isi pesan utama yang akan dibaca pelanggan" },
+              footer: { type: "string", description: "Catatan kaki kecil (opsional)" },
+              options: {
+                type: "array",
+                description: "Daftar 2-10 pilihan untuk pelanggan",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: { type: "string", description: "Teks tombol/pilihan" },
+                    value: { type: "string", description: "Nilai unik pilihan (opsional)" },
+                    description: { type: "string", description: "Deskripsi singkat (opsional, untuk daftar)" },
                   },
+                  required: ["label"],
                 },
               },
-              required: ["body", "options"],
             },
+            required: ["body", "options"],
           },
         },
-      ],
-      max_tokens: config.ai.maxTokens,
-      temperature: 0.7,
-    });
+      },
+    ];
+
+    let completion;
+    try {
+      completion = await client.chat.completions.create({
+        model: config.ai.model,
+        messages: aiMessages,
+        tools: aiTools,
+        max_tokens: config.ai.maxTokens,
+        temperature: 0.7,
+      });
+    } catch (primaryErr) {
+      if (config.ai.model !== "sp/gemini/gemini-3.5-flash") {
+        logger.warn(
+          `[chatbot] Primary model ${config.ai.model} failed, attempting automatic fallback to sp/gemini/gemini-3.5-flash:`,
+          primaryErr
+        );
+        completion = await client.chat.completions.create({
+          model: "sp/gemini/gemini-3.5-flash",
+          messages: aiMessages,
+          tools: aiTools,
+          max_tokens: config.ai.maxTokens,
+          temperature: 0.7,
+        });
+      } else {
+        throw primaryErr;
+      }
+    }
 
     const msg = completion.choices[0]?.message;
 
@@ -359,19 +382,34 @@ export async function generateSummary(
     .join("\n");
 
   try {
-    const completion = await client.chat.completions.create({
-      model: config.ai.model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "Buat ringkasan singkat (maks 3 kalimat) dalam Bahasa Indonesia dari percakapan customer service berikut. Sertakan: topik utama, masalah yang dibahas, dan hasil akhir.",
-        },
-        { role: "user", content: transcript },
-      ],
-      max_tokens: 200,
-      temperature: 0.3,
-    });
+    let completion;
+    const summaryMessages = [
+      {
+        role: "system" as const,
+        content:
+          "Buat ringkasan singkat (maks 3 kalimat) dalam Bahasa Indonesia dari percakapan customer service berikut. Sertakan: topik utama, masalah yang dibahas, dan hasil akhir.",
+      },
+      { role: "user" as const, content: transcript },
+    ];
+    try {
+      completion = await client.chat.completions.create({
+        model: config.ai.model,
+        messages: summaryMessages,
+        max_tokens: 200,
+        temperature: 0.3,
+      });
+    } catch (err) {
+      if (config.ai.model !== "sp/gemini/gemini-3.5-flash") {
+        completion = await client.chat.completions.create({
+          model: "sp/gemini/gemini-3.5-flash",
+          messages: summaryMessages,
+          max_tokens: 200,
+          temperature: 0.3,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     return (
       completion.choices[0]?.message?.content || "Ringkasan sesi."
