@@ -18,6 +18,11 @@ import path from "path";
 import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { EventEmitter } from "events";
+import {
+  relayInteractiveMessage,
+  isInteractiveContent,
+  type InteractiveMessagePayload,
+} from "./interactive.js";
 
 export const waEvents = new EventEmitter();
 
@@ -217,6 +222,17 @@ export async function connectWa(force = false): Promise<void> {
     },
   });
 
+  // Intercept sendMessage to automatically relay interactive messages natively
+  const originalSendMessage = sock.sendMessage.bind(sock);
+  sock.sendMessage = async function (destJid: string, content: any, opts?: any) {
+    if (isInteractiveContent(content)) {
+      const interactivePayload = content.interactiveMessage || content;
+      const targetJid = await resolveTargetJid(destJid, { preferPhone: true });
+      return (await relayInteractiveMessage(sock!, targetJid, interactivePayload, opts)) as any;
+    }
+    return originalSendMessage(destJid, content, opts);
+  } as any;
+
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", async (update) => {
@@ -410,33 +426,141 @@ export async function sendWaMessage(
   options?: any
 ): Promise<proto.WebMessageInfo | null> {
   if (!sock) return null;
-  let targetJid = jid;
-  if (!jid.includes("@")) {
-    try {
-      const { db, schema } = await import("../db/index.js");
-      const { eq } = await import("drizzle-orm");
-      const customer = await db
-        .select()
-        .from(schema.customers)
-        .where(eq(schema.customers.wa_number, jid))
-        .limit(1);
-      
-      if (customer.length > 0 && customer[0].jid) {
-        targetJid = customer[0].jid;
-        logger.info(`[wa] Found custom JID for ${jid}: ${targetJid}`);
-      } else {
-        targetJid = getJid(jid);
-      }
-    } catch (err) {
-      logger.error(`[wa] Error looking up customer JID for ${jid}:`, err);
-      targetJid = getJid(jid);
-    }
-  }
+  const targetJid = await resolveTargetJid(jid);
   const result = await sock.sendMessage(targetJid, content, options);
   if (result && result.key.remoteJid && result.key.id && result.message) {
     localMessageStore.set(result.key.remoteJid, result.key.id, result.message);
   }
-  return result ?? null;
+  return (result ?? null) as proto.WebMessageInfo | null;
+}
+
+/**
+ * Check if a JID is in @lid format (WhatsApp Linked ID)
+ */
+export function isLidJid(jid: string | undefined | null): boolean {
+  if (!jid) return false;
+  return jid.endsWith("@lid");
+}
+
+/**
+ * Resolve a @lid JID or formatted phone string to standard @s.whatsapp.net phone number JID.
+ * WhatsApp Native Flow interactive stanzas MUST be addressed to a phone number JID or group.
+ */
+export async function resolveToPhoneJid(
+  jid: string,
+  inlineAlt?: string | null
+): Promise<string> {
+  if (!jid) return jid;
+  if (jid.endsWith("@g.us") || jid.endsWith("@newsletter")) return jid;
+
+  // 1. Inline alt if phone
+  if (inlineAlt && !isLidJid(inlineAlt)) {
+    const clean = inlineAlt.replace(/[^0-9]/g, "");
+    if (clean) return `${clean}@s.whatsapp.net`;
+  }
+
+  // 2. If it's a LID, check reverse mapping file from Baileys session
+  if (isLidJid(jid)) {
+    const lidId = jid.split("@")[0].replace(/[^0-9]/g, "");
+    const sessionDir = path.resolve(config.wa.sessionPath);
+    const reverseFile = path.join(sessionDir, `lid-mapping-${lidId}_reverse.json`);
+    if (fs.existsSync(reverseFile)) {
+      try {
+        const phone = JSON.parse(fs.readFileSync(reverseFile, "utf-8"));
+        const cleanPhone = String(phone).replace(/[^0-9]/g, "");
+        if (cleanPhone) return `${cleanPhone}@s.whatsapp.net`;
+      } catch {}
+    }
+
+    // 3. Check DB customer mapping for this LID where wa_number is a real phone number
+    try {
+      const { db, schema } = await import("../db/index.js");
+      const { eq, and, notLike } = await import("drizzle-orm");
+      const cust = await db
+        .select()
+        .from(schema.customers)
+        .where(
+          and(
+            eq(schema.customers.jid, jid),
+            notLike(schema.customers.wa_number, "%@lid%")
+          )
+        )
+        .limit(1);
+      if (cust.length > 0 && cust[0].wa_number) {
+        const clean = cust[0].wa_number.replace(/[^0-9]/g, "");
+        if (clean) return `${clean}@s.whatsapp.net`;
+      }
+    } catch (err) {
+      logger.debug("[wa] resolveToPhoneJid DB lookup failed:", err);
+    }
+  }
+
+  // 4. If normal JID or raw number
+  if (jid.includes("@s.whatsapp.net")) {
+    return jid;
+  }
+  const clean = jid.replace(/[^0-9]/g, "");
+  if (clean) {
+    return `${clean}@s.whatsapp.net`;
+  }
+  return jid;
+}
+
+/**
+ * Resolve a phone number or JID to the JID WhatsApp expects.
+ * If preferPhone is true, always returns a normalized @s.whatsapp.net or group JID.
+ */
+export async function resolveTargetJid(
+  jid: string,
+  options?: { preferPhone?: boolean }
+): Promise<string> {
+  if (options?.preferPhone || isLidJid(jid)) {
+    return await resolveToPhoneJid(jid);
+  }
+  if (jid.includes("@")) return jid;
+  try {
+    const { db, schema } = await import("../db/index.js");
+    const { eq } = await import("drizzle-orm");
+    const customer = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.wa_number, jid))
+      .limit(1);
+
+    if (customer.length > 0 && customer[0].jid) {
+      if (options?.preferPhone && isLidJid(customer[0].jid)) {
+        return await resolveToPhoneJid(customer[0].jid);
+      }
+      logger.info(`[wa] Found custom JID for ${jid}: ${customer[0].jid}`);
+      return customer[0].jid;
+    }
+    return getJid(jid);
+  } catch (err) {
+    logger.error(`[wa] Error looking up customer JID for ${jid}:`, err);
+    return getJid(jid);
+  }
+}
+
+/**
+ * Send a rich interactive WhatsApp message (buttons / list menu) using the
+ * Native Flow relay path required by Baileys 6.7.x.
+ */
+export async function sendInteractiveMessage(
+  jid: string,
+  payload: InteractiveMessagePayload,
+  options: { quoted?: WAMessage } = {}
+): Promise<proto.WebMessageInfo> {
+  if (!sock) {
+    throw new Error("WhatsApp gateway belum terhubung. Hubungkan perangkat terlebih dahulu.");
+  }
+  // Native Flow interactive messages MUST be addressed to a phone number JID (@s.whatsapp.net) or group
+  const targetJid = await resolveTargetJid(jid, { preferPhone: true });
+  const msg = await relayInteractiveMessage(sock, targetJid, payload, options);
+
+  if (msg.key.remoteJid && msg.key.id && msg.message) {
+    localMessageStore.set(msg.key.remoteJid, msg.key.id, msg.message);
+  }
+  return msg as proto.WebMessageInfo;
 }
 
 export async function downloadWaMedia(

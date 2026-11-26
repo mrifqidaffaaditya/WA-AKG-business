@@ -47,6 +47,40 @@ Mengirimkan pesan WhatsApp tunggal (teks atau media).
 
 ---
 
+### POST /api/v1/messages/interactive
+
+Mengirim pesan interaktif (tombol / menu daftar) ke satu nomor. Butuh scope `messages:send`.
+
+**Request Body:**
+```json
+{
+  "to": "6281234567890",
+  "title": "Konfirmasi",
+  "body": "Lanjutkan pesanan ini?",
+  "footer": "Pilih salah satu",
+  "options": [
+    { "label": "Ya", "value": "yes" },
+    { "label": "Tidak", "value": "no" }
+  ]
+}
+```
+
+Selain `options`, bentuk `buttons` atau `sections` juga diterima. Lihat [INTERACTIVE.md](./INTERACTIVE.md).
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "messageId": "msg_01HXYZ...",
+  "conversationId": "conv_01HABC...",
+  "waMessageId": "3EB0B0F39D5...",
+  "to": "6281234567890",
+  "sentAt": "2026-11-26T09:00:00.000Z"
+}
+```
+
+---
+
 ### POST /api/v1/messages/broadcast
 
 Mengirim pesan massal ke banyak nomor dengan proteksi delay bertahap (*staggered delivery*).
@@ -405,6 +439,54 @@ Send a message as CS to the customer via WhatsApp.
 }
 ```
 
+### POST /api/conversations/:id/interactive
+
+Send a rich interactive message (buttons or a list menu) as CS. Automatically claims a `bot`/`waiting` conversation and re-opens a `resolved` one.
+
+**Request (buttons):**
+```json
+{
+  "title": "Konfirmasi",
+  "body": "Lanjutkan pesanan ini?",
+  "footer": "Pilih salah satu",
+  "buttons": [
+    { "type": "quick_reply", "displayText": "✅ Ya", "id": "confirm_yes" },
+    { "type": "cta_url", "displayText": "🌐 Katalog", "url": "https://toko.example.com" }
+  ]
+}
+```
+
+**Request (list menu / simplified options):**
+```json
+{
+  "title": "Katalog",
+  "body": "Silakan pilih produk:",
+  "options": [
+    { "label": "Kopi Arabika", "value": "kopi", "description": "Rp 85.000" },
+    { "label": "Kopi Robusta", "value": "robusta", "description": "Rp 65.000" }
+  ]
+}
+```
+
+`options` with ≤3 entries becomes quick-reply buttons; more than 3 becomes a single-select list. A full `buttons: [{ "type": "single_select", "title": "...", "sections": [...] }]` is also accepted.
+
+**Response (201):** the saved message row, including `"media_type": "interactive"`.
+
+See [INTERACTIVE.md](./INTERACTIVE.md) for the complete guide.
+
+### GET /api/conversations/stock-menu
+
+Stock items shaped for the interactive menu builder.
+
+**Response (200):**
+```json
+{
+  "items": [
+    { "id": "produk_1", "name": "Kopi Arabika", "price": 85000, "stock": 12, "priceLabel": "Rp 85.000", "stockLabel": "tersedia (12)" }
+  ]
+}
+```
+
 ---
 
 ## Customers
@@ -456,28 +538,69 @@ Update bot configuration.
 ### Stock Configuration
 
 #### GET /api/admin/stock-config
-#### PUT /api/admin/stock-config
 
-**Request:**
+Returns the saved configuration with secrets masked (`***`), a friendly `fields` object for the admin form, and the latest sync `status`.
+
 ```json
 {
   "source_type": "google_sheets",
-  "config_json": "{\"spreadsheet_id\":\"...\",\"sheet_name\":\"Stok\"}",
-  "is_active": true
+  "is_active": true,
+  "config": { "spreadsheet_id": "1Bxi...", "credentials_json": "***" },
+  "fields": { "spreadsheetId": "1Bxi...", "sheetName": "Stok", "colName": "A", "colPrice": "B", "colStock": "C" },
+  "status": {
+    "last_synced_at": "2026-11-26T09:00:00.000Z",
+    "last_sync_status": "success",
+    "last_sync_error": null,
+    "last_item_count": 24
+  }
 }
 ```
 
+#### PUT /api/admin/stock-config
+
+Accepts either friendly `fields` (recommended) or a raw `config_json` object/string. Empty or `***` secrets never overwrite the stored value.
+
+```json
+{
+  "source_type": "google_sheets",
+  "is_active": true,
+  "fields": {
+    "spreadsheetId": "https://docs.google.com/spreadsheets/d/1Bxi.../edit",
+    "sheetName": "Stok",
+    "headerRow": 1,
+    "colName": "A",
+    "colPrice": "B",
+    "colStock": "C",
+    "credentialsJson": "{ \"type\": \"service_account\", ... }"
+  }
+}
+```
+
+Saving triggers an immediate sync and returns the same shape as `GET`.
+
+#### POST /api/admin/stock-config/test
+
+Tests a candidate configuration without saving it.
+
+```json
+{ "source_type": "mysql", "fields": { "host": "127.0.0.1", "database": "stok", "table": "products", "user": "readonly", "password": "..." } }
+```
+
+**Response:** `{ "ok": true, "count": 24, "sample": [...] }` or `{ "ok": false, "error": "..." }`.
+
+#### POST /api/admin/stock-config/sync
+
+Forces a fresh sync: `{ "success": true, "count": 24, "status": { ... } }`.
+
 #### GET /api/admin/stock/preview
-Preview current stock data.
+
+Normalized stock rows.
 
 **Response (200):**
 ```json
-{
-  "data": [
-    { "name": "Produk A", "qty": 100, "price": 50000 },
-    { "name": "Produk B", "qty": 50, "price": 75000 }
-  ]
-}
+[
+  { "name": "Produk A", "price": 50000, "stock": 100, "priceLabel": "Rp 50.000", "stockLabel": "tersedia (100)" }
+]
 ```
 
 ---

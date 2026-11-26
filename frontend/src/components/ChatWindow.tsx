@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import Modal from "@/components/Modal";
+import InteractiveMessageModal from "@/components/InteractiveMessageModal";
 import { formatPhone, timeAgo, playBeep } from "@/lib/utils";
 import { connect, getIO } from "@/lib/socket";
 import { apiFetch, getAuthenticatedMediaUrl } from "@/lib/api";
@@ -23,6 +24,7 @@ import {
   StickyNote,
   Star,
   Pencil,
+  Sparkles,
 } from "lucide-react";
 
 interface Message {
@@ -34,6 +36,7 @@ interface Message {
   content: string;
   content_type?: "text" | "image" | "video" | "document" | "audio";
   media_url?: string | null;
+  media_type?: string | null;
   file_name?: string | null;
   reply_to_content?: string | null;
   reply_to_sender?: string | null;
@@ -117,6 +120,7 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [holdLoading, setHoldLoading] = useState(false);
+  const [interactiveOpen, setInteractiveOpen] = useState(false);
 
   // ── Notes (per-number history + edit current conversation's note) ──
   const [notesOpen, setNotesOpen] = useState(false);
@@ -857,6 +861,17 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                         </p>
                       </div>
                     )}
+                    {msg.media_type === "interactive" && (
+                      <span
+                        className={
+                          "inline-flex items-center gap-1 mb-1 text-[10px] font-semibold " +
+                          (isMine ? "text-amber-950/80" : "text-amber-400/90")
+                        }
+                      >
+                        <Sparkles size={11} />
+                        Pesan interaktif
+                      </span>
+                    )}
                     {msg.content_type === "image" && (
                       <div className="mb-2 overflow-hidden rounded-xl border border-white/10">
                         <img
@@ -915,14 +930,49 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
                     )}
 
                     {msg.content && msg.content_type !== "image" && (
-                      <p
-                        className={
-                          "text-sm whitespace-pre-wrap break-words leading-relaxed " +
-                          (isMine ? "text-white" : "text-slate-200")
-                        }
-                      >
-                        {msg.content}
-                      </p>
+                      msg.media_type === "interactive" && msg.content.includes("• ") ? (
+                        <div className="space-y-2 text-sm leading-relaxed">
+                          {(() => {
+                            const [mainText, ...rest] = msg.content.split("\n\n• ");
+                            const options = rest.length > 0
+                              ? ("• " + rest.join("\n\n• ")).split("\n").filter((l) => l.trim().startsWith("• "))
+                              : [];
+                            return (
+                              <>
+                                <p className={"whitespace-pre-wrap break-words " + (isMine ? "text-white" : "text-slate-200")}>
+                                  {mainText}
+                                </p>
+                                {options.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5 pt-1">
+                                    {options.map((opt, optIdx) => (
+                                      <div
+                                        key={optIdx}
+                                        className={
+                                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border " +
+                                          (isMine
+                                            ? "bg-amber-900/40 border-amber-600/40 text-amber-100"
+                                            : "bg-slate-900/80 border-slate-700/80 text-amber-300")
+                                        }
+                                      >
+                                        <span>{opt.replace(/^•\s*/, "")}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        <p
+                          className={
+                            "text-sm whitespace-pre-wrap break-words leading-relaxed " +
+                            (isMine ? "text-white" : "text-slate-200")
+                          }
+                        >
+                          {msg.content}
+                        </p>
+                      )
                     )}
 
                     <div
@@ -1089,6 +1139,15 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
             <Paperclip size={20} />
           </button>
 
+          <button
+            onClick={() => setInteractiveOpen(true)}
+            aria-label="Kirim pesan interaktif"
+            className="shrink-0 p-3 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-xl transition-all cursor-pointer"
+            title="Kirim tombol / menu interaktif"
+          >
+            <Sparkles size={20} />
+          </button>
+
           <textarea
             ref={textareaRef}
             value={input}
@@ -1139,6 +1198,14 @@ export default function ChatWindow({ conversation, soundEnabled, onBack }: ChatW
           </button>
         </div>
       </div>
+
+      <InteractiveMessageModal
+        isOpen={interactiveOpen}
+        onClose={() => setInteractiveOpen(false)}
+        conversationId={conversation.id}
+        customerName={displayName}
+        onSent={() => scrollToBottom("smooth")}
+      />
 
       <Modal
         isOpen={resolveModal}

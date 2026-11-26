@@ -120,6 +120,10 @@ export const stockConfig = sqliteTable("stock_config", {
   }),
   config_json: text("config_json"),
   is_active: integer("is_active", { mode: "boolean" }).notNull().default(false),
+  last_synced_at: text("last_synced_at"),
+  last_sync_status: text("last_sync_status"),
+  last_sync_error: text("last_sync_error"),
+  last_item_count: integer("last_item_count").notNull().default(0),
   updated_at: text("updated_at").notNull(),
 });
 

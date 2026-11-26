@@ -14,7 +14,9 @@ import {
   updateConversationNote,
   type ConversationStatus,
 } from "../services/conversation.js";
-import { sendWaMessage } from "../services/waGateway.js";
+import { sendWaMessage, sendInteractiveMessage } from "../services/waGateway.js";
+import { normalizeInteractivePayload, describeInteractivePayload } from "../services/interactive.js";
+import { getStockMenuItems } from "../services/stock.js";
 import { emitToUser, emitToRole, broadcast } from "../ws/index.js";
 import { generateAndSaveSummary } from "../services/orchestrator.js";
 import { logger } from "../utils/logger.js";
@@ -102,6 +104,21 @@ router.get("/queue-count", async (_req, res) => {
     const count = await getQueueCount();
     res.json({ count });
   } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * GET /api/conversations/stock-menu
+ * Lightweight stock list used by the interactive menu builder in the CS panel.
+ * Declared before `/:id` so it is not captured as a conversation id.
+ */
+router.get("/stock-menu", async (_req, res) => {
+  try {
+    const items = await getStockMenuItems(30);
+    res.json({ items });
+  } catch (err) {
+    logger.error("[conversations] Stock menu error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -333,6 +350,133 @@ router.post("/:id/messages", async (req: AuthRequest, res: Response) => {
     res.status(201).json(messageWithCsName);
   } catch (err) {
     logger.error("[conversations] Message error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/conversations/:id/interactive
+ * Send a rich interactive message (buttons / list menu) to the customer.
+ */
+router.post("/:id/interactive", async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const user = getUser(req);
+    const conv = await getConversation(id);
+    if (!conv) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
+    if (
+      user.role === "cs" &&
+      conv.claimed_by !== user.sub &&
+      conv.status !== "waiting" &&
+      conv.status !== "bot" &&
+      conv.status !== "resolved"
+    ) {
+      res.status(403).json({ error: "You can only send messages to your claimed conversations" });
+      return;
+    }
+
+    // Replying to a resolved conversation re-opens it for this user, matching
+    // the behaviour of the regular text-message endpoint.
+    if (conv.status === "resolved") {
+      const now = new Date().toISOString();
+      await db
+        .update(schema.conversations)
+        .set({ status: "active", claimed_by: user.sub, updated_at: now })
+        .where(eq(schema.conversations.id, id));
+
+      broadcast("conversation:claimed", { conversationId: id, claimedBy: user.sub, status: "active" });
+      broadcast("conversation:status", { conversationId: id, status: "active", claimedBy: user.sub });
+      requestDashboardBroadcast();
+
+      createAuditLog({
+        userId: user.sub,
+        action: "reactivate_conversation",
+        entityType: "conversations",
+        entityId: id,
+        details: JSON.stringify({ customer: conv.customer_name || conv.wa_number }),
+      });
+
+      const reactivateUserRows = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.id, user.sub))
+        .limit(1);
+      notifyReactivate(
+        conv.customer_name || conv.wa_number,
+        reactivateUserRows[0]?.name || "CS",
+        id
+      ).catch((err) => logger.warn("[conversations] Reactivate notification failed:", err));
+    }
+
+    const normalized = normalizeInteractivePayload(req.body);
+    const hasButtons = Array.isArray(normalized.buttons) && normalized.buttons.length > 0;
+
+    if (!normalized.body && !normalized.title) {
+      res.status(400).json({ error: "Isi pesan (body atau title) wajib diisi." });
+      return;
+    }
+    if (!hasButtons) {
+      res.status(400).json({ error: "Minimal satu tombol atau daftar pilihan wajib diisi." });
+      return;
+    }
+
+    if (conv.status === "bot" || conv.status === "waiting") {
+      await claimConversation(id, user.sub);
+      broadcast("conversation:claimed", { conversationId: id, claimedBy: user.sub, status: "active" });
+      broadcast("conversation:status", { conversationId: id, status: "active", claimedBy: user.sub });
+      requestDashboardBroadcast();
+    }
+
+    let waResult;
+    try {
+      waResult = await sendInteractiveMessage(conv.wa_number, normalized);
+    } catch (waErr) {
+      logger.error("[conversations] Interactive send error:", waErr);
+      res.status(502).json({
+        error:
+          waErr instanceof Error
+            ? waErr.message
+            : "Gagal mengirim pesan interaktif ke WhatsApp",
+      });
+      return;
+    }
+
+    const csUserRows = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, user.sub))
+      .limit(1);
+    const csUser = csUserRows[0];
+
+    const content = describeInteractivePayload(normalized);
+
+    const msg = await addMessage({
+      conversationId: id,
+      sender: "cs",
+      csId: user.sub,
+      content,
+      contentType: "text",
+      mediaType: "interactive",
+      waMessageId: waResult?.key?.id || undefined,
+    });
+
+    const messageWithCsName = { ...msg, cs_name: csUser?.name || null };
+    broadcast("conversation:message", { conversationId: id, message: messageWithCsName });
+    dispatchWebhookEvent("message.sent", {
+      conversationId: id,
+      sender: "cs",
+      csId: user.sub,
+      csName: csUser?.name,
+      message: messageWithCsName,
+    });
+
+    res.status(201).json(messageWithCsName);
+  } catch (err) {
+    logger.error("[conversations] Interactive message error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

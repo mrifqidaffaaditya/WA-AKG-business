@@ -52,6 +52,7 @@ export async function createConversation(params: {
   customerId: string;
   waNumber: string;
   customerName?: string;
+  status?: "bot" | "waiting";
 }): Promise<typeof schema.conversations.$inferSelect> {
   const id = generateId();
   const now = new Date().toISOString();
@@ -62,7 +63,7 @@ export async function createConversation(params: {
       customer_id: params.customerId,
       wa_number: params.waNumber,
       customer_name: params.customerName || null,
-      status: "bot",
+      status: params.status || "bot",
       claimed_by: null,
       rating: null,
       review: null,

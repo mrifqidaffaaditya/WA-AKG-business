@@ -1,6 +1,6 @@
 import { Router, Response } from "express";
 import { ApiKeyRequest, requireScope } from "../../middleware/apiKeyAuth.js";
-import { previewStock, syncStockNow } from "../../services/stock.js";
+import { previewStock, syncStockNow, getStockStatus } from "../../services/stock.js";
 import { dispatchWebhookEvent } from "../../services/webhook.js";
 import { logger } from "../../utils/logger.js";
 
@@ -33,17 +33,23 @@ router.post("/sync", requireScope("stock:write"), async (_req: ApiKeyRequest, re
   try {
     await syncStockNow();
     const items = await previewStock();
+    const status = getStockStatus();
 
     dispatchWebhookEvent("stock.updated", {
       itemCount: items.length,
       syncedAt: new Date().toISOString(),
+      status: status.status,
     });
 
     res.json({
-      success: true,
-      message: "Stock sync completed successfully",
+      success: status.status === "success",
+      message:
+        status.status === "success"
+          ? "Stock sync completed successfully"
+          : "Stock sync finished with an error",
       count: items.length,
       syncedAt: new Date().toISOString(),
+      status,
     });
   } catch (err: unknown) {
     const msg = err && typeof err === "object" && "message" in err ? (err as Error).message : String(err);

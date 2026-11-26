@@ -4,6 +4,7 @@ import { db, schema } from "../db/index.js";
 import { eq, asc } from "drizzle-orm";
 import { getCustomerByWaNumber } from "./conversation.js";
 import { getStockContext } from "./stock.js";
+import { buildOptionsPayload, type InteractiveMessagePayload, type InteractiveOption } from "./interactive.js";
 import { logger } from "../utils/logger.js";
 
 let client: OpenAI | null = null;
@@ -130,6 +131,7 @@ export async function generateBotResponse(
 ): Promise<{
   response: string;
   shouldEscalate: boolean;
+  interactive?: InteractiveMessagePayload;
 }> {
   const client = getClient();
   const botConfig = await getBotConfig();
@@ -195,6 +197,7 @@ ${returningContext ? `\n[RIWAYAT PERCAKAPAN SEBELUMNYA (HANYA REFERENSI)]\n${ret
 - Jika pesan pelanggan sangat singkat, tidak jelas, atau berupa satu karakter/sapaan pendek saja (seperti "p", "halo", "?", "tes"), tanggapi dengan sapaan ramah dan tanyakan bagaimana Anda dapat membantu mereka hari ini. Jangan mengulangi riwayat percakapan sebelumnya.
 - Jika pelanggan minta bicara CS atau tampak marah/kecewa, arahkan bahwa CS akan segera menghubungi.
 - Jika ditanya stok, gunakan data stok yang tersedia.
+- Gunakan fungsi kirim_pilihan_interaktif ketika pelanggan perlu memilih menu/katalog, mengonfirmasi pesanan, atau menerima penawaran. Sertakan 2-10 opsi yang jelas dan singkat. Jangan gunakan tombol untuk obrolan biasa.
 - Balasan singkat dan jelas, tidak bertele-tele.`;
 
   try {
@@ -234,27 +237,97 @@ ${returningContext ? `\n[RIWAYAT PERCAKAPAN SEBELUMNYA (HANYA REFERENSI)]\n${ret
             },
           },
         },
+        {
+          type: "function",
+          function: {
+            name: "kirim_pilihan_interaktif",
+            description:
+              "Kirim pesan WhatsApp interaktif dengan tombol atau daftar pilihan. Gunakan untuk menu/katalog, konfirmasi pesanan, atau penawaran. Jangan gunakan untuk obrolan biasa.",
+            parameters: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Judul singkat pesan (opsional)" },
+                body: { type: "string", description: "Isi pesan utama yang akan dibaca pelanggan" },
+                footer: { type: "string", description: "Catatan kaki kecil (opsional)" },
+                options: {
+                  type: "array",
+                  description: "Daftar 2-10 pilihan untuk pelanggan",
+                  items: {
+                    type: "object",
+                    properties: {
+                      label: { type: "string", description: "Teks tombol/pilihan" },
+                      value: { type: "string", description: "Nilai unik pilihan (opsional)" },
+                      description: { type: "string", description: "Deskripsi singkat (opsional, untuk daftar)" },
+                    },
+                    required: ["label"],
+                  },
+                },
+              },
+              required: ["body", "options"],
+            },
+          },
+        },
       ],
       max_tokens: config.ai.maxTokens,
       temperature: 0.7,
     });
 
     const msg = completion.choices[0]?.message;
-    
+
     let aiRequestedEscalation = false;
     let response = msg?.content || "";
+    let interactive: InteractiveMessagePayload | undefined;
 
     if (msg?.tool_calls && msg.tool_calls.length > 0) {
       for (const call of msg.tool_calls) {
-        if (call.type === "function" && call.function.name === "transfer_to_cs") {
+        if (call.type !== "function") continue;
+
+        if (call.function.name === "transfer_to_cs") {
           aiRequestedEscalation = true;
         }
+
+        if (call.function.name === "kirim_pilihan_interaktif") {
+          try {
+            const args = JSON.parse(call.function.arguments || "{}");
+            const options: InteractiveOption[] = Array.isArray(args.options)
+              ? args.options
+                  .filter((o: any) => o && typeof o.label === "string" && o.label.trim())
+                  .slice(0, 10)
+                  .map((o: any) => ({
+                    label: o.label.trim(),
+                    value: typeof o.value === "string" ? o.value : undefined,
+                    description: typeof o.description === "string" ? o.description : undefined,
+                  }))
+              : [];
+
+            if (options.length > 0) {
+              interactive = buildOptionsPayload({
+                title: typeof args.title === "string" && args.title.trim() ? args.title : undefined,
+                body:
+                  typeof args.body === "string" && args.body.trim()
+                    ? args.body
+                    : "Silakan pilih salah satu opsi berikut:",
+                footer: typeof args.footer === "string" && args.footer.trim() ? args.footer : undefined,
+                options,
+              });
+              // The interactive body is the visible message, so use it for the
+              // stored history and as the fallback text.
+              response = interactive.body || response;
+            }
+          } catch (err) {
+            logger.warn("[chatbot] Invalid interactive tool arguments:", err);
+          }
+        }
       }
-      
+
       // If AI decided to escalate but didn't provide a text response, provide a default one
       if (!response && aiRequestedEscalation) {
         response = "Baik, saya akan menghubungkan Anda dengan Customer Service kami. Mohon tunggu sebentar ya.";
       }
+    }
+
+    if (!response && interactive) {
+      response = interactive.body || "Silakan pilih salah satu opsi berikut:";
     }
 
     if (!response) {
@@ -263,7 +336,7 @@ ${returningContext ? `\n[RIWAYAT PERCAKAPAN SEBELUMNYA (HANYA REFERENSI)]\n${ret
 
     const finalShouldEscalate = shouldEscalate || aiRequestedEscalation;
 
-    return { response, shouldEscalate: finalShouldEscalate };
+    return { response, shouldEscalate: finalShouldEscalate, interactive };
   } catch (err) {
     logger.error("[chatbot] AI error:", err);
     return {

@@ -1,7 +1,8 @@
 import { Router, Response } from "express";
 import { ApiKeyRequest, requireScope } from "../../middleware/apiKeyAuth.js";
 import { findOrCreateCustomer, findActiveConversation, createConversation, addMessage } from "../../services/conversation.js";
-import { sendWaMessage, extractWaNumber, getJid } from "../../services/waGateway.js";
+import { sendWaMessage, sendInteractiveMessage, extractWaNumber, getJid } from "../../services/waGateway.js";
+import { normalizeInteractivePayload, describeInteractivePayload } from "../../services/interactive.js";
 import { dispatchWebhookEvent } from "../../services/webhook.js";
 import { broadcast } from "../../ws/index.js";
 import { logger } from "../../utils/logger.js";
@@ -120,6 +121,116 @@ router.post("/send", requireScope("messages:send"), async (req: ApiKeyRequest, r
     const msg = err && typeof err === "object" && "message" in err ? (err as Error).message : String(err);
     logger.error("[v1/messages/send] Error:", err);
     res.status(500).json({ error: "Failed to send message", details: msg });
+  }
+});
+
+/**
+ * POST /api/v1/messages/interactive
+ * Send a rich interactive message (buttons / list menu).
+ *
+ * Body: { to, title?, body, footer?, buttons? | options? | sections? }
+ */
+router.post("/interactive", requireScope("messages:send"), async (req: ApiKeyRequest, res: Response) => {
+  try {
+    const { to, ...payload } = req.body;
+
+    if (!to || typeof to !== "string") {
+      res.status(400).json({ error: "Field 'to' (phone number or JID) is required" });
+      return;
+    }
+
+    const normalized = normalizeInteractivePayload(payload);
+    const hasButtons = Array.isArray(normalized.buttons) && normalized.buttons.length > 0;
+
+    if (!normalized.body && !normalized.title) {
+      res.status(400).json({ error: "Either 'body' or 'title' is required" });
+      return;
+    }
+    if (!hasButtons) {
+      res.status(400).json({ error: "At least one button/option is required" });
+      return;
+    }
+
+    const waNumber = extractWaNumber(to);
+    if (!waNumber || waNumber.length < 7) {
+      res.status(400).json({ error: "Invalid phone number format" });
+      return;
+    }
+
+    const { customer } = await findOrCreateCustomer({
+      waNumber,
+      jid: to.includes("@") ? to : undefined,
+    });
+
+    let conv = await findActiveConversation(customer.id);
+    if (!conv) {
+      conv = await createConversation({
+        customerId: customer.id,
+        waNumber,
+        customerName: customer.display_name || waNumber,
+      });
+    }
+
+    const targetJid = customer.jid || getJid(waNumber);
+    let waResult;
+    try {
+      waResult = await sendInteractiveMessage(targetJid, normalized);
+    } catch (sendErr) {
+      const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+      res.status(502).json({ error: "Failed to send interactive message", details: msg });
+      return;
+    }
+
+    const senderType = req.user?.role === "cs" ? "cs" : "bot";
+    const csId = req.user?.id || undefined;
+
+    const savedMsg = await addMessage({
+      conversationId: conv.id,
+      sender: senderType,
+      csId,
+      content: describeInteractivePayload(normalized),
+      contentType: "text",
+      mediaType: "interactive",
+      waMessageId: waResult?.key?.id || undefined,
+    });
+
+    broadcast("message:new", {
+      conversationId: conv.id,
+      message: savedMsg,
+      customerName: customer.display_name || waNumber,
+      waNumber,
+    });
+
+    dispatchWebhookEvent("message.sent", {
+      conversationId: conv.id,
+      customer: {
+        id: customer.id,
+        waNumber,
+        displayName: customer.display_name,
+      },
+      message: {
+        id: savedMsg.id,
+        sender: senderType,
+        contentType: "interactive",
+        content: normalized.body,
+        waMessageId: waResult?.key?.id,
+        createdAt: savedMsg.created_at,
+      },
+      apiKey: req.apiKey ? { id: req.apiKey.id, name: req.apiKey.name } : null,
+    });
+
+    res.status(200).json({
+      success: true,
+      messageId: savedMsg.id,
+      conversationId: conv.id,
+      waMessageId: waResult?.key?.id || null,
+      to: waNumber,
+      sentAt: savedMsg.created_at,
+    });
+  } catch (err: unknown) {
+    const msg = err && typeof err === "object" && "message" in err ? (err as Error).message : String(err);
+    logger.error("[v1/messages/interactive] Error:", err);
+    res.status(500).json({ error: "Failed to send interactive message", details: msg });
   }
 });
 

@@ -7,7 +7,7 @@ import { hashPassword, revokeAllUserTokens } from "../services/auth.js";
 import { adminMutationRateLimit } from "../middleware/rateLimit.js";
 import { config } from "../config.js";
 import { createAuditLog } from "../utils/audit.js";
-import { previewStock, clearStockCache, syncStockNow } from "../services/stock.js";
+import { clearStockCache, syncStockNow, getStockPreview, getStockStatus, parseStockConfigJson, maskStockConfig, mergeStockConfig, buildConfigFromFields, configToFriendlyFields, testStockConnection } from "../services/stock.js";
 import { logger } from "../utils/logger.js";
 import { getDashboardStats } from "../services/dashboard.js";
 import { getCsConfig, updateCsConfig, validateCsConfigFields } from "../services/csConfig.js";
@@ -229,6 +229,48 @@ const stockRouter = Router();
 stockRouter.use(authenticate);
 stockRouter.use(requireRole("super_admin"));
 
+type StockSource = "google_sheets" | "mysql" | "postgresql";
+
+function isStockSource(value: unknown): value is StockSource {
+  return value === "google_sheets" || value === "mysql" || value === "postgresql";
+}
+
+function validateStockFields(sourceType: StockSource, fields: Record<string, unknown>): string | null {
+  if (sourceType === "google_sheets") {
+    const id = fields.spreadsheetId ?? fields.spreadsheet_id ?? fields.spreadsheetUrl ?? fields.spreadsheet_url;
+    if (!id || !String(id).trim()) return "Link atau ID Spreadsheet wajib diisi.";
+    return null;
+  }
+  if (!fields.host || !String(fields.host).trim()) return "Host database wajib diisi.";
+  if (!(fields.database ?? fields.db) || !String(fields.database ?? fields.db).trim()) {
+    return "Nama database wajib diisi.";
+  }
+  if (!fields.table || !String(fields.table).trim()) return "Nama tabel wajib diisi.";
+  return null;
+}
+
+/** Serialize a stock_config row with masked secrets and friendly fields. */
+function serializeStockRow(row: typeof schema.stockConfig.$inferSelect) {
+  const config = parseStockConfigJson(row.config_json);
+  const masked = maskStockConfig(config);
+  return {
+    id: row.id,
+    source_type: row.source_type,
+    is_active: row.is_active,
+    updated_at: row.updated_at,
+    config_json: JSON.stringify(masked),
+    config: masked,
+    fields: configToFriendlyFields(row.source_type as StockSource | null, config),
+    status: {
+      last_synced_at: row.last_synced_at,
+      last_sync_status: row.last_sync_status,
+      last_sync_error: row.last_sync_error,
+      last_item_count: row.last_item_count,
+      runtime: getStockStatus(),
+    },
+  };
+}
+
 stockRouter.get("/", async (_req, res) => {
   try {
     const rows = await db.select().from(schema.stockConfig).limit(1);
@@ -236,27 +278,9 @@ stockRouter.get("/", async (_req, res) => {
       res.status(404).json({ error: "Stock config not found" });
       return;
     }
-    const row = { ...rows[0] };
-    // Mask credential fields in config_json for defense-in-depth
-    if (row.config_json) {
-      try {
-        const parsed: Record<string, unknown> =
-          typeof row.config_json === "string"
-            ? JSON.parse(row.config_json)
-            : {};
-        const SENSITIVE_KEYS = ["password", "api_key", "apiKey", "apikey", "secret", "credentials", "token"];
-        for (const key of Object.keys(parsed)) {
-          if (SENSITIVE_KEYS.some((sk) => key.toLowerCase().includes(sk.toLowerCase()))) {
-            parsed[key] = "***";
-          }
-        }
-        row.config_json = JSON.stringify(parsed) as any;
-      } catch (parseErr) {
-        logger.error("[admin] Failed to parse config_json for masking:", parseErr);
-      }
-    }
-    res.json(row);
-  } catch {
+    res.json(serializeStockRow(rows[0]));
+  } catch (err) {
+    logger.error("[admin] Stock config read error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -269,14 +293,61 @@ stockRouter.put("/", async (req: AuthRequest, res) => {
       return;
     }
 
-    const { source_type, config_json, is_active } = req.body;
+    const { source_type, config_json, fields, is_active } = req.body as Record<string, unknown>;
+
+    if (source_type !== undefined && !isStockSource(source_type)) {
+      res.status(400).json({ error: "source_type tidak valid. Gunakan google_sheets, mysql, atau postgresql." });
+      return;
+    }
+    if (is_active !== undefined && typeof is_active !== "boolean") {
+      res.status(400).json({ error: "is_active harus berupa boolean." });
+      return;
+    }
+
+    const resolvedSource = (source_type ?? existing[0].source_type) as StockSource | null;
+    const existingConfig = parseStockConfigJson(existing[0].config_json);
 
     const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 
+    let incomingConfig: Record<string, unknown> | null = null;
+
+    if (config_json !== undefined) {
+      if (typeof config_json === "string") {
+        try {
+          incomingConfig = JSON.parse(config_json);
+        } catch {
+          res.status(400).json({ error: "config_json bukan JSON yang valid." });
+          return;
+        }
+      } else if (config_json && typeof config_json === "object") {
+        incomingConfig = config_json as Record<string, unknown>;
+      } else {
+        res.status(400).json({ error: "config_json harus berupa object atau string JSON." });
+        return;
+      }
+    } else if (fields !== undefined) {
+      if (!resolvedSource) {
+        res.status(400).json({ error: "Pilih sumber data stok terlebih dahulu." });
+        return;
+      }
+      if (!fields || typeof fields !== "object") {
+        res.status(400).json({ error: "fields harus berupa object." });
+        return;
+      }
+      const fieldError = validateStockFields(resolvedSource, fields as Record<string, unknown>);
+      if (fieldError) {
+        res.status(400).json({ error: fieldError });
+        return;
+      }
+      incomingConfig = buildConfigFromFields(resolvedSource, fields as Record<string, unknown>);
+    }
+
+    if (incomingConfig) {
+      updates.config_json = JSON.stringify(mergeStockConfig(existingConfig, incomingConfig));
+    }
     if (source_type !== undefined) updates.source_type = source_type;
-    if (config_json !== undefined) updates.config_json = JSON.stringify(config_json);
     if (is_active !== undefined) updates.is_active = is_active;
 
     await db
@@ -292,13 +363,78 @@ stockRouter.put("/", async (req: AuthRequest, res) => {
       action: "update_stock_config",
       entityType: "stock_config",
       entityId: existing[0].id,
+      details: JSON.stringify({ source_type: resolvedSource, is_active }),
     });
 
     const updated = await db.select().from(schema.stockConfig).limit(1);
-    res.json(updated[0]);
+    res.json(serializeStockRow(updated[0]));
   } catch (err) {
     logger.error("[admin] Stock config error:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * Test a candidate configuration without saving it or touching the live cache.
+ * Accepts `fields` (from the friendly form) or `config_json` (advanced mode).
+ */
+stockRouter.post("/test", async (req: AuthRequest, res) => {
+  try {
+    const existing = await db.select().from(schema.stockConfig).limit(1);
+    const existingConfig = existing.length > 0 ? parseStockConfigJson(existing[0].config_json) : {};
+
+    const { source_type, config_json, fields } = req.body as Record<string, unknown>;
+    const resolvedSource = (source_type ?? existing[0]?.source_type) as StockSource | null;
+
+    if (!resolvedSource || !isStockSource(resolvedSource)) {
+      res.status(400).json({ error: "Pilih sumber data stok terlebih dahulu." });
+      return;
+    }
+
+    let incoming: Record<string, unknown> | null = null;
+    if (config_json !== undefined) {
+      if (typeof config_json === "string") {
+        try {
+          incoming = JSON.parse(config_json);
+        } catch {
+          res.status(400).json({ error: "config_json bukan JSON yang valid." });
+          return;
+        }
+      } else if (config_json && typeof config_json === "object") {
+        incoming = config_json as Record<string, unknown>;
+      }
+    } else if (fields !== undefined) {
+      const fieldError = validateStockFields(resolvedSource, fields as Record<string, unknown>);
+      if (fieldError) {
+        res.status(400).json({ error: fieldError });
+        return;
+      }
+      incoming = buildConfigFromFields(resolvedSource, fields as Record<string, unknown>);
+    }
+
+    const merged = incoming ? mergeStockConfig(existingConfig, incoming) : existingConfig;
+    const result = await testStockConnection(resolvedSource, merged);
+    res.json({ ...result, source_type: resolvedSource });
+  } catch (err) {
+    logger.error("[admin] Stock test error:", err);
+    res.status(500).json({ ok: false, error: "Gagal menguji koneksi stok." });
+  }
+});
+
+/** Force a fresh synchronization using the saved configuration. */
+stockRouter.post("/sync", async (_req, res) => {
+  try {
+    clearStockCache();
+    await syncStockNow();
+    const status = getStockStatus();
+    res.json({
+      success: status.status === "success",
+      status,
+      count: status.itemCount,
+    });
+  } catch (err) {
+    logger.error("[admin] Stock sync error:", err);
+    res.status(500).json({ error: "Gagal menyinkronkan stok." });
   }
 });
 
@@ -306,7 +442,7 @@ router.use("/stock-config", stockRouter);
 
 router.get("/stock/preview", async (_req, res) => {
   try {
-    const data = await previewStock();
+    const data = await getStockPreview();
     res.json(data);
   } catch (err) {
     logger.error("[admin] Stock preview error:", err);

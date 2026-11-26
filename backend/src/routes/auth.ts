@@ -233,12 +233,13 @@ router.put("/profile", authenticate, profileRateLimitPassthrough, async (req: Au
 
       // Generate new tokens so user session remains uninterrupted
       newAccessToken = generateAccessToken({
-        id: currentUser.id,
-        email: currentUser.email,
-        name: (updates.name as string) || currentUser.name,
-        role: currentUser.role as any,
+        sub: currentUser.id,
+        role: currentUser.role,
       });
-      newRefreshToken = generateRefreshToken();
+      newRefreshToken = generateRefreshToken({
+        sub: currentUser.id,
+        role: currentUser.role,
+      });
       await storeRefreshToken(currentUser.id, newRefreshToken);
       passwordChanged = true;
     }

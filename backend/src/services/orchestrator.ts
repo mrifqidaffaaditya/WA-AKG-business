@@ -1,4 +1,13 @@
-import { waEvents, sendWaMessage, getJid, extractWaNumber, downloadWaMedia, getConnectionStatus } from "./waGateway.js";
+import {
+  waEvents,
+  sendWaMessage,
+  sendInteractiveMessage,
+  getJid,
+  extractWaNumber,
+  downloadWaMedia,
+  getConnectionStatus,
+  resolveToPhoneJid,
+} from "./waGateway.js";
 import {
   findOrCreateCustomer,
   findActiveConversation,
@@ -104,15 +113,16 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
     return;
   }
 
-  // Prefer key.senderPn (real phone number JID) over remoteJid (which might be a LID)
-  const phoneJid = (key as any).senderPn || jid;
+  // Normalize LID JID to phone number JID using remoteJidAlt / Baileys reverse map / DB
+  const remoteJidAlt = (key as any).remoteJidAlt || (key as any).senderPn || null;
+  const phoneJid = await resolveToPhoneJid(jid, remoteJidAlt);
   const waNumber = extractWaNumber(phoneJid);
   const pushName = msg.pushName || waNumber;
 
   const { customer, isNew } = await findOrCreateCustomer({
     waNumber,
     displayName: pushName,
-    jid,
+    jid: jid !== phoneJid ? jid : undefined,
   });
 
   if (isNew) {
@@ -310,20 +320,45 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
         return;
       }
 
-      const { response, shouldEscalate } = await generateBotResponse(
+      const { response, shouldEscalate, interactive } = await generateBotResponse(
         activeConv.id,
         waNumber,
         content
       );
 
-      const botMsg = await addMessage({
-        conversationId: activeConv.id,
-        sender: "bot",
-        content: response,
-        contentType: "text",
-      });
+      let botMsg: typeof schema.messages.$inferSelect | null = null;
+      let sentInteractively = false;
 
-      await sendWaMessage(jid, { text: response });
+      if (interactive) {
+        try {
+          const waResult = await sendInteractiveMessage(phoneJid, interactive);
+          botMsg = await addMessage({
+            conversationId: activeConv.id,
+            sender: "bot",
+            content: response,
+            contentType: "text",
+            mediaType: "interactive",
+            waMessageId: waResult?.key?.id || undefined,
+          });
+          sentInteractively = true;
+        } catch (err) {
+          logger.warn(
+            "[orchestrator] Interactive send failed, falling back to plain text:",
+            err
+          );
+        }
+      }
+
+      if (!sentInteractively) {
+        botMsg = await addMessage({
+          conversationId: activeConv.id,
+          sender: "bot",
+          content: response,
+          contentType: "text",
+        });
+
+        await sendWaMessage(phoneJid, { text: response });
+      }
 
       if (botMsg) {
         broadcast("conversation:message", {
@@ -390,8 +425,17 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> 
   }
 }
 
+function normalizeMsgContent(m: proto.IMessage | null | undefined): proto.IMessage | null | undefined {
+  if (!m) return m;
+  const anyM = m as any;
+  if (anyM.viewOnceMessage?.message) return normalizeMsgContent(anyM.viewOnceMessage.message);
+  if (anyM.viewOnceMessageV2?.message) return normalizeMsgContent(anyM.viewOnceMessageV2.message);
+  if (anyM.ephemeralMessage?.message) return normalizeMsgContent(anyM.ephemeralMessage.message);
+  return m;
+}
+
 function extractMessageText(msg: proto.IWebMessageInfo): string | null {
-  const m = msg.message;
+  const m = normalizeMsgContent(msg.message);
   if (!m) return null;
 
   if (m.conversation) return m.conversation;
@@ -399,11 +443,60 @@ function extractMessageText(msg: proto.IWebMessageInfo): string | null {
   if (m.imageMessage?.caption) return m.imageMessage.caption;
   if (m.videoMessage?.caption) return m.videoMessage.caption;
   if (m.documentMessage?.caption) return m.documentMessage.caption;
+
+  // Native Flow interactive response (buttons / list sent by us).
+  if (m.interactiveResponseMessage) {
+    const paramsJson = m.interactiveResponseMessage.nativeFlowResponseMessage?.paramsJson;
+    if (paramsJson) {
+      try {
+        const params = JSON.parse(paramsJson);
+        const text =
+          params.display_text ||
+          params.displayText ||
+          params.title ||
+          params.id ||
+          params.selectedId;
+        if (typeof text === "string" && text.trim()) return text;
+      } catch {
+        // fall through to body text
+      }
+    }
+    const bodyText = m.interactiveResponseMessage.body?.text;
+    if (bodyText) return bodyText;
+  }
+
+  // Legacy button response.
+  if (m.buttonsResponseMessage) {
+    return (
+      m.buttonsResponseMessage.selectedDisplayText ||
+      m.buttonsResponseMessage.selectedButtonId ||
+      "Pilihan"
+    );
+  }
+
+  // Legacy list response.
+  if (m.listResponseMessage) {
+    return (
+      m.listResponseMessage.title ||
+      m.listResponseMessage.singleSelectReply?.selectedRowId ||
+      "Pilihan"
+    );
+  }
+
+  // Legacy template button response.
+  if (m.templateButtonReplyMessage) {
+    return (
+      m.templateButtonReplyMessage.selectedDisplayText ||
+      m.templateButtonReplyMessage.selectedId ||
+      "Pilihan"
+    );
+  }
+
   return null;
 }
 
 function getMessageContentType(msg: proto.IWebMessageInfo): string {
-  const m = msg.message;
+  const m = normalizeMsgContent(msg.message);
   if (!m) return "text";
   if (m.imageMessage) return "image";
   if (m.videoMessage) return "video";

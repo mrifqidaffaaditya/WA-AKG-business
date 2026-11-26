@@ -12,6 +12,7 @@ Welcome to the official WA-AKG Business documentation.
 | [API Reference](./API.md) | Complete REST API endpoints with request/response examples |
 | [Deployment Guide](./DEPLOYMENT.md) | Production deployment with Docker Compose, PM2, and reverse proxy |
 | [WhatsApp Setup](./WHATSAPP.md) | WhatsApp Gateway setup, QR login, troubleshooting |
+| [Interactive Messages](./INTERACTIVE.md) | Buttons, list menus, AI tool, and v1 API for interactive chat |
 | [Stock Integration](./STOCK.md) | Google Sheets and database stock configuration |
 
 ## Quick Navigation

@@ -293,9 +293,12 @@ Full documentation is available in the [`/docs`](./docs) directory:
 
 | Document | Description |
 |---|---|
+| [Installation Guide](./docs/INSTALLATION.md) | Full step-by-step setup (Docker, PM2, nginx, go-live checklist) |
 | [Architecture](./docs/ARCHITECTURE.md) | System design & data flow |
 | [Configuration](./docs/CONFIGURATION.md) | All config options explained |
 | [WhatsApp Setup](./docs/WHATSAPP.md) | WhatsApp Gateway setup & troubleshooting |
+| [Interactive Messages](./docs/INTERACTIVE.md) | Buttons & list menus for CS, AI bot, and API |
+| [Stock Integration](./docs/STOCK.md) | Google Sheets / MySQL / PostgreSQL stock setup |
 | [API Reference](./docs/API.md) | Complete REST API endpoints |
 
 ---

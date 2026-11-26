@@ -16,7 +16,7 @@
   "dependencies": {
     "@hapi/boom": "^10.0.1",
     "@libsql/client": "^0.17.4",
-    "@whiskeysockets/baileys": "^6.7.9",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

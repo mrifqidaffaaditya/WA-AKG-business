@@ -77,7 +77,8 @@ export async function refreshAccessToken(): Promise<string | null> {
 async function makeRequest(
   url: string,
   options: RequestInit = {},
-  raw: boolean = false
+  raw: boolean = false,
+  timeoutMs: number = FETCH_TIMEOUT_MS
 ): Promise<unknown> {
   const token = getAccessToken();
 
@@ -97,7 +98,7 @@ async function makeRequest(
     ...options,
     headers,
     credentials: "include",
-  });
+  }, timeoutMs);
 
   if (res.status === 401) {
     const newToken = await refreshAccessToken();
@@ -107,7 +108,7 @@ async function makeRequest(
         ...options,
         headers,
         credentials: "include",
-      });
+      }, timeoutMs);
     }
   }
 
@@ -135,10 +136,11 @@ function isAbortError(err: unknown): boolean {
 async function makeRequestWithTimeout(
   url: string,
   options: RequestInit = {},
-  raw: boolean = false
+  raw: boolean = false,
+  timeoutMs: number = FETCH_TIMEOUT_MS
 ): Promise<unknown> {
   try {
-    return await makeRequest(url, options, raw);
+    return await makeRequest(url, options, raw, timeoutMs);
   } catch (err: unknown) {
     if (isAbortError(err)) {
       const timeoutError = new Error("Request timed out");
@@ -158,9 +160,10 @@ export function api<T = unknown>(
 
 export function apiFetch(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs: number = FETCH_TIMEOUT_MS
 ): Promise<Response> {
-  return makeRequestWithTimeout(url, options, true) as Promise<Response>;
+  return makeRequestWithTimeout(url, options, true, timeoutMs) as Promise<Response>;
 }
 
 export function get<T = unknown>(url: string): Promise<T> {

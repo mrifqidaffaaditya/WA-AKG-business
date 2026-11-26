@@ -14,3 +14,5 @@ sessions/
 .env.local
 .env.production
 *.tsbuildinfo
+backend/public/uploads/*
+!backend/public/uploads/.gitkeep

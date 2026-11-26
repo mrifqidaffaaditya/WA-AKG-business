@@ -1,4 +1,5 @@
 import { createClient } from "@libsql/client";
+import { randomUUID } from "crypto";
 import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
 
@@ -272,6 +273,18 @@ async function run() {
     await addColumnIfNotExists("bot_config", "session_timeout_warning_mins", "INTEGER NOT NULL DEFAULT 5");
     await addColumnIfNotExists("bot_config", "is_active", "INTEGER NOT NULL DEFAULT 1");
     await addColumnIfNotExists("conversations", "warning_sent", "INTEGER NOT NULL DEFAULT 0");
+    await addColumnIfNotExists("stock_config", "last_synced_at", "TEXT");
+    await addColumnIfNotExists("stock_config", "last_sync_status", "TEXT");
+    await addColumnIfNotExists("stock_config", "last_sync_error", "TEXT");
+    await addColumnIfNotExists("stock_config", "last_item_count", "INTEGER NOT NULL DEFAULT 0");
+
+    // Ensure a stock_config row always exists so the admin panel can render an
+    // empty (inactive) configuration instead of a 404 on a fresh install.
+    await client.execute(`
+      INSERT INTO stock_config (id, source_type, config_json, is_active, updated_at)
+      SELECT '${randomUUID()}', NULL, '{}', 0, '${new Date().toISOString()}'
+      WHERE NOT EXISTS (SELECT 1 FROM stock_config)
+    `);
 
     await client.execute("COMMIT");
     console.log("[migrate] Done.");
